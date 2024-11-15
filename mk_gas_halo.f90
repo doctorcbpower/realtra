@@ -24,7 +24,7 @@ program mk_halo
   ! Output data
   real(kind=4) :: mpart,logmp,msample,fmsample
   
-  real(kind=8) :: dx,dy,dz,r,rvir,rcynd,phi
+  real(kind=8) :: dx,dy,dz,r,rvir,rcynd,phi,dvel(3),vcirc
 
   character(kind=1,len=20) :: instring
   character(kind=1,len=132) :: infile,outfile,datafile,glassfile
@@ -35,6 +35,7 @@ program mk_halo
   integer(kind=4) :: i,ii,j,k,n
 
   real(kind=8) :: vshell
+  real(kind=4) :: sigma
   real(kind=8) :: utemp,rhobar,vesc
   real(kind=8) :: lx,lxmin,lxmax,dlx
 
@@ -56,27 +57,28 @@ program mk_halo
   logical :: istabulated
   
   integer(kind=4) :: mode
-  isbh=.false.
+  integer(kind=4), dimension(6) :: write_types
 
-  nexp=3
+  isbh=.false.
+  istabulated=.false.
 
   if(command_argument_count().eq.0) stop 'Usage: mk_gas_halo.exe ./paramfile'
   
   call get_command_argument(1,paramfile)
-
+  
   inquire(file=paramfile,exist=fexist)
-
+  
   if(fexist.eqv..false.) stop 'Error: parameter file does not exist'
-
-  call set_parameters(paramfile,npart,outfile,glassfile,istabulated,tabfile,ispoisson,1,mode)
-
+  
+  call set_parameters(paramfile,npart,outfile,glassfile,istabulated,tabfile,ispoisson,1,mode,write_types)
+  
   if(mbh.gt.0.0) isbh=.true.
 
   if(istabulated) then
      call read_tabulated_data(tabfile,ntab,rtab,mtab,utab,mgas)
   else
      prof_type=1
-     if(form_comp(1).eq.'hernquist') prof_type=2
+     if(form.eq.'hernquist') prof_type=2
      
      write(*,*)
      write(*,*) 'Defining virial overdensity (wrt critical density) as: ',deltavir
@@ -90,7 +92,7 @@ program mk_halo
      r200 = getrvir(m200,deltavir,rhocrit0)
      rs=r200/c200                                  ! NFW Scale radius
      !  if(prof_type.eq.2) rs=rs*sqrt(2*(log(1.+c200)-c200/(1.+c200)))
-     router=rtrunc_comp(1)*r200
+     router=rtrunc*r200
   endif
   
   if(isbh.eqv..true.) write(*,*) 'Assuming a central black hole...'
@@ -122,16 +124,15 @@ program mk_halo
      end if
      mhalo=m200
   end if
-
+  
   if(lambda_b.gt.0.) write(*,*) 'Assuming a spin parameter :',lambda_b
-
+  
   if(istabulated.eqv..false.) then
 !!! Now set up the enclosed mass profile 
-     
      write(*,*) 'Assuming a baryon fraction :',fbaryon
      
      xmin=1.0e-8             ! These distances are in units of r200
-     xmax=rtrunc_comp(1)*router/r200
+     xmax=1.1*router/r200
      
      call menc_gas(xmin,xmax,mgas,fbaryon,ntab,rtab,mtab,utab)
   end if
@@ -145,7 +146,7 @@ program mk_halo
      if(rtab(i).ge.router) exit
      i=i+1
   end do
-  
+
   msample=mgas*(mtab(i-1)*(rtab(i)-router)/(rtab(i)-rtab(i-1))+&
        & mtab(i)*(router-rtab(i-1))/(rtab(i)-rtab(i-1)))
   
@@ -220,6 +221,8 @@ program mk_halo
   jy=0.0
   jz=0.0
 
+  mpart = 10**logmp
+  
   if(ispoisson) iseed=-18827921
   
   do 
@@ -238,9 +241,9 @@ program mk_halo
      else
         m_enc = ran3(iseed)*fmsample
      end if
-     
+
      i=1
-     
+
      do 
         if(mtab(i).ge.m_enc) exit
         i=i+1
@@ -274,6 +277,12 @@ program mk_halo
         if(sqrt(pos(1,nkeep)**2+pos(2,nkeep)**2+pos(3,nkeep)**2).le.r200)&
              & ngvir=ngvir+1
      endif
+
+     ug(nkeep) = utab(i-1)*(rtab(i)-rnew)/(rtab(i)-rtab(i-1))+&
+          & utab(i)*(rnew-rtab(i-1))/(rtab(i)-rtab(i-1))
+     ug(nkeep) = ug(nkeep)*vunit**2.
+
+     sigma=sqrt(2.*ug(nkeep))
      
      ! Include the radial component...
      
@@ -283,9 +292,21 @@ program mk_halo
 
      ! ... and angular component if present
 
-     vel(1,nkeep) = vel(1,nkeep) + get_vel_comps(pos(1:3,nkeep),1)
-     vel(2,nkeep) = vel(2,nkeep) + get_vel_comps(pos(1:3,nkeep),2)
-     vel(3,nkeep) = vel(3,nkeep) + get_vel_comps(pos(1:3,nkeep),3)
+     vcirc=lambda_b*v200*r200/rnew!sqrt(ggdt*rnew*(mgas*m_enc+mhenc(rnew)))/rnew
+
+     phi=2*PI*ran3(iseed)
+     
+     dvel(1)=gasdev(iseed)
+     dvel(2)=gasdev(iseed)
+     dvel(3)=gasdev(iseed)
+
+     dvel(1)=dvel(1)*sigma!-vcirc*sin(atan2(pos(2,nkeep),pos(1,nkeep)))
+     dvel(2)=dvel(2)*sigma!+vcirc*cos(atan2(pos(2,nkeep),pos(1,nkeep)))     
+     dvel(3)=dvel(3)*sigma     
+
+     vel(1,nkeep) = vel(1,nkeep) + dvel(1)
+     vel(2,nkeep) = vel(2,nkeep) + dvel(2)
+     vel(3,nkeep) = vel(3,nkeep) + dvel(3)
 
      vxc=vxc+vel(1,nkeep)
      vyc=vyc+vel(2,nkeep)
@@ -297,18 +318,12 @@ program mk_halo
      
      id(nkeep)=nkeep
      
-     ug(nkeep) = utab(i-1)*(rtab(i)-rnew)/(rtab(i)-rtab(i-1))+&
-          & utab(i)*(rnew-rtab(i-1))/(rtab(i)-rtab(i-1))
-     ug(nkeep) = ug(nkeep)*vunit**2.
-
      jx=jx+(pos(2,nkeep)*vel(3,nkeep)-pos(3,nkeep)*vel(2,nkeep))
      jy=jy-(pos(1,nkeep)*vel(3,nkeep)-pos(3,nkeep)*vel(1,nkeep))
      jz=jz+(pos(1,nkeep)*vel(2,nkeep)-pos(2,nkeep)*vel(1,nkeep))
      
-     mtotal=mtotal+10**logmp
+     mtotal=mtotal+mpart
   end do
-
-  mpart = 10**logmp
   
   if(mode.eq.4) then
      do i=1,nkeep
@@ -343,7 +358,7 @@ program mk_halo
   write(*,*) 'Centre of mass [kpc]: ',xc,yc,zc
   write(*,*) 'Centre of mass velocity [km/s]: ',vxc,vyc,vzc
   write(*,*) 'Centre of mass velocity dispersion [km/s]: ',sqrt(vxc2),sqrt(vyc2),sqrt(vzc2)
-  write(*,*) 'Angular momentum [kpc x km/s]: ',jx,jy,jz!,sqrt(jx*jx+jy*jy+jz*jz)/sqrt(2.*ggdt*m200*r200)  
+  write(*,*) 'Angular momentum [kpc x km/s], Spin: ',jx,jy,jz,sqrt(jx*jx+jy*jy+jz*jz)/sqrt(2.*ggdt*m200*r200)  
 
   ! Measure the radial profiles we've just created...
   if(allocated(r2)) deallocate(r2)

@@ -82,6 +82,7 @@ program mk_halo
   logical:: ispoisson
   logical:: istabulated  
   integer(kind=4) :: mode           ! mode of output
+  integer(kind=4), dimension(6) :: write_types    ! which particles need to be written?
   logical:: isbh
 
   real(kind=8), parameter :: frcut=1.05
@@ -96,7 +97,7 @@ program mk_halo
   inquire(file=paramfile,exist=fexist)
 
   if(fexist.eqv..false.) stop 'Error: parameter file does not exist'
-  call set_parameters(paramfile,npart,outfile,glassfile,istabulated,tabfile,ispoisson,2,mode)
+  call set_parameters(paramfile,npart,outfile,glassfile,istabulated,tabfile,ispoisson,2,mode,write_types)
 
   if(mbh.gt.0.0) isbh=.true.
 
@@ -119,8 +120,8 @@ program mk_halo
   write(*,*) 'Virial radius [kpc/h]:',r200
   write(*,*) 'Scale radius [kpc/h]:',rs
 
-  lrmin=dlog10(rs)-6.
-  lrmax=dlog10(rs)+6.
+  lrmin=-4.
+  lrmax=4.
   
   if(istaper) call taper_mass_profile(mtot,10**lrmax)
 
@@ -224,14 +225,14 @@ program mk_halo
      mtot = mtab(ntab)
   end if
   
-  pot_0=0.0
+  pot_0=0.0 !1.e-5
 
   do i=ntab,1,-1
      call qromo(fpot,dlog(rtab(i)),lrmax,ptab(i),midpnt)
      ptab(i)=-ggdt*ptab(i)
      if(i.eq.ntab) pot_0=ptab(i)
      ptab(i)=-(ptab(i)-pot_0)*rscale/ggdt/mtot
-     print *, rtab(i),mtab(i),ptab(i)
+!     print *, rtab(i),mtab(i),ptab(i)
   end do
 
   write(*,*) 'Tabulated gravitational potential'

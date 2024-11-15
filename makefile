@@ -2,18 +2,18 @@
 OPT += -DHERNQUIST_HALO
 #OPT += -DLOGARITHMIC_HALO
 #OPT += -DHERNQUIST_BULGE
-OPT += -DSTELLAR_DISC_EXPONENTIAL
-OPT += -DEXPONENTIAL_DISC
-OPT += -DGalIC
-#OPT += -DHDF5
+#OPT += -DSTELLAR_DISC_EXPONENTIAL
+#OPT += -DEXPONENTIAL_DISC
+#OPT += -DGalIC
+OPT += -DHDF5
 #OPT += -DDEBUG
 
 OPTS = 
 
-ifneq (HDF5,$(findstring HDF5,$(OPT))) 
-FC = gfortran $(OPTS)
-HDF5INCL =
-HDF5LIB  =
+ifeq (HDF5,$(findstring HDF5,$(OPT))) 
+FC = /opt/homebrew/bin/gfortran-13
+HDF5_INCL = -I/opt/homebrew/Cellar/hdf5/1.14.1/include
+HDF5_LIBS  = -L/opt/homebrew/Cellar/hdf5/1.14.1/lib /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5hl_fortran.a /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5_hl.a /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5_fortran.a /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5.a -L/opt/homebrew/opt/libaec/lib -lsz -lz -ldl -lm 
 else
 FC = gfortran-9 $(OPTS)
 HDF5_INCL= 

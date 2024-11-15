@@ -1,11 +1,12 @@
 module read_params
   use structure
 contains
-  subroutine set_parameters(infile,npart,outfile,glass_file,istabulated,tabfile,ispoisson,mode,mode_io)
+  subroutine set_parameters(infile,npart,outfile,glass_file,istabulated,tabfile,ispoisson,mode,mode_io,type_io)
     implicit none
     
     integer(kind=4) :: mode                        ! mode=0,1 for disc, halo
     integer(kind=4) :: mode_io                     ! mode_io=0,1,2 for SnapFormat=1,2, HDF5
+    integer(kind=4), dimension(6) :: type_io       ! which species need to be written out?
     character(kind=1,len=*) :: infile              ! input parameter file
     character(kind=1,len=*) :: glass_file          ! glass cube
     character(kind=1,len=*) :: outfile             ! output ICs
@@ -22,13 +23,13 @@ contains
                                                           ! disc hole radius, reference length of disc
     namelist /bulge/ mbulge,fbulge     ! Bulge mass fraction, bulge scale length fraction
     namelist /gas_disc/ temp,ndisc     ! Disc temperature, number of particles in disc
-    namelist /gas_halo/ fbaryon,nhalo,lambda_b,v_radial ! Baryon fraction, 
+    namelist /gas_halo/ fbaryon,nhalo,lambda_b,v_radial,rtrunc,form ! Baryon fraction, 
                                        ! number of particles in halo,Bullock spin parameter,
                                        ! radial infall velocity (as fraction of V200)
     namelist /black_hole/ mbh          ! Central black hole mass fraction
     namelist /nbody/ ncomp,npart_comp,fmass_comp,form_comp,rscale_comp,rtrunc_comp,raniso_comp,istaper !
-    namelist /output/ disc_file,halo_file,nbody_file,snap_format   ! Disc and halo files,
-                                                        ! binary format, HDF5 on or off?
+    namelist /output/ disc_file,halo_file,nbody_file,snap_format,type_io   ! Disc and halo files,
+                                                        ! binary format, HDF5 on or off?, write species?
     namelist /misc/ glass_file,ispoisson,tabfile,istabulated
     
     npart=0
@@ -53,62 +54,49 @@ contains
        npart=ndisc
        outfile=trim(disc_file)
     else if (mode.eq.1) then ! mode=1 is for gas halo
-        open(1,file=infile,status='old')
-        rewind(1)
-        read(1,nml=halo)
-        rewind(1)
-        read(1,nml=disc)
-        rewind(1)
-        read(1,nml=bulge)
-        rewind(1)
-        read(1,nml=gas_halo)
-        rewind(1)
-        read(1,nml=black_hole)
-        rewind(1)
-        read(1,nml=output)
-        rewind(1)
-        read(1,nml=misc)
-        close(1)
-        npart=nhalo
-        outfile=trim(halo_file)
+       open(1,file=infile,status='old')
+       rewind(1)
+       read(1,nml=halo)
+       rewind(1)
+       read(1,nml=disc)
+       rewind(1)
+       read(1,nml=bulge)
+       rewind(1)
+       read(1,nml=gas_halo)
+       rewind(1)
+       read(1,nml=black_hole)
+       rewind(1)
+       read(1,nml=output)
+       rewind(1)
+       read(1,nml=misc)
+       close(1)
+       npart=nhalo
+       outfile=trim(halo_file)
     else if (mode.eq.2) then ! mode=2 is for nbody components
-        open(1,file=infile,status='old')
-        rewind(1)
-        read(1,nml=halo)
-        rewind(1)
-        read(1,nml=disc)
-        rewind(1)
-        read(1,nml=bulge)
-        rewind(1)
-        read(1,nml=black_hole)
-        rewind(1)
-        read(1,nml=nbody)
-        rewind(1)
-        read(1,nml=output)
-        rewind(1)
-        read(1,nml=misc)
-        close(1)
-        npart=sum(npart_comp)
-        outfile=trim(nbody_file)
+       open(1,file=infile,status='old')
+       rewind(1)
+       read(1,nml=halo)
+       rewind(1)
+       read(1,nml=disc)
+       rewind(1)
+       read(1,nml=bulge)
+       rewind(1)
+       read(1,nml=black_hole)
+       rewind(1)
+       read(1,nml=nbody)
+       rewind(1)
+       read(1,nml=output)
+       rewind(1)
+       read(1,nml=misc)
+       close(1)
+       npart=sum(npart_comp)
+       outfile=trim(nbody_file)
     else 
-        stop 'mode not supported'    
-    end if 
-
-    !if(mode.eq.0) then        ! mode=0 is for gas disc
-    !   npart=ndisc
-    !   outfile=trim(disc_file)
-    !else if (mode.eq.1) then  ! mode=1 is for gas halo
-    !    npart=nhalo
-    !    outfile=trim(halo_file)
-    !else if (mode.eq.2) then  ! mode=2 is for nbody components
-    !    npart=sum(npart_comp)
-    !    outfile=trim(nbody_file)
-    !else
-    !    stop 'mode not supported'
-    !end if
+       stop 'mode not supported'    
+    end if
 
     if(snap_format.gt.4) snap_format=1
-
+    
     mode_io=snap_format
     
     if(mode_io.eq.1) then

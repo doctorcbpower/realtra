@@ -158,7 +158,7 @@ contains
     if(xmin.lt.0) stop 'xmin.lt.0'        ! Remember, xmin and xmin are in units
                                           ! of r200
     if(xmax.lt.0) stop 'xmax.lt.0'
-    
+
     if(xmin.ge.xmax) stop 'xmin.ge.xmax'
 
     rscale=rs

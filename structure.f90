@@ -28,6 +28,7 @@ module structure
     real(kind=8) :: fhole=0.0   ! size of central disc hole, in units of rdisc
     real(kind=8) :: fdref=0.0   ! size of reference radius, in units of rdisc
     real(kind=8) :: qflat=1.0   ! flattening parameter
+    real(kind=8) :: rtrunc=1.0   ! Truncation radius
     real(kind=8) :: rcore       ! core radius
     real(kind=8) :: rhocrit ! Critical density at z
     real(kind=8) :: temp    ! gas temperature
@@ -55,6 +56,7 @@ module structure
     real(kind=8), dimension(ncomp_max) :: rtrunc_comp=(/0.,0.,0.,0.,0./) ! Truncation
     ! radius per component, in units of rvir
     character(kind=1,len=20), dimension(ncomp_max) :: form_comp !
+    character(kind=1,len=20) :: form
     !Form of component profile; currently NFW or Hernquist
 
     real(kind=8), dimension(ncomp_max) :: rhostar_comp
@@ -419,7 +421,7 @@ contains
     
     implicit none
 
-    real(kind=8) :: r
+    real(kind=8) :: r,menc
     
     get_j = lambda_b * sqrt(2.*ggdt*r*mhenc(r))
     
@@ -427,13 +429,14 @@ contains
 
   end function get_j
 
-  real(kind=4) function get_vel_comps(pos,idim)
+  real(kind=4) function get_vel_comps(pos,idim,sigma)
     
     implicit none
 
     real(kind=4), dimension(3) :: pos
     integer(kind=4) :: i,idim
-    real(kind=4), dimension(3) :: vel    
+    real(kind=4), dimension(3) :: vel
+    real(kind=4) :: sigma
     real(kind=8) :: r
     real(kind=8) :: vcirc
 
@@ -449,7 +452,7 @@ contains
     vel(1)=-vcirc*sin(atan2(pos(2),pos(1)))
     vel(2)=vcirc*cos(atan2(pos(2),pos(1)))
     vel(3)=0.0
-    
+
     get_vel_comps = vel(idim)
     
     return

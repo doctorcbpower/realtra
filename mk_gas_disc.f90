@@ -78,6 +78,7 @@ program main
   logical:: ispoisson
   logical:: istabulated  
   integer(kind=4) :: mode           ! mode of output
+  integer(kind=4), dimension(6) :: write_types
   external derivs
   
   isbh=.false.
@@ -93,7 +94,7 @@ program main
   inquire(file=paramfile,exist=fexist)
 
   if(fexist.eqv..false.) stop 'Error: parameter file does not exist'
-  call set_parameters(paramfile,ndisc,outfile,glassfile,istabulated,tabfile,ispoisson,0,mode)
+  call set_parameters(paramfile,ndisc,outfile,glassfile,istabulated,tabfile,ispoisson,0,mode,write_types)
   if(mbh.gt.0.0) isbh=.true.
   
   ! Now compute properties of the disc environment
@@ -146,7 +147,7 @@ program main
 #endif
   write(*,*) 'Scale radius:',rs*sqrt(2*(dlog(1+c200)-c200/(1+c200)))
   write(*,*)
-  rdisc=fdisc*rs*sqrt(2*(dlog(1+c200)-c200/(1+c200)))       ! in units of kiloparsecs
+  rdisc=fdisc*rs!*sqrt(2*(dlog(1+c200)-c200/(1+c200)))       ! in units of kiloparsecs
   rbulge=fbulge*rs*sqrt(2*(dlog(1+c200)-c200/(1+c200)))     ! in units of kiloparsecs
   rdisc_hole=fhole*rdisc     ! in units of kpc
 #endif
@@ -203,7 +204,7 @@ program main
   ! Define dimension and bounds of the mesh
   nrbin=150
   lrmin=log10(rdisc)-3.0
-  lrmax=log10(rdisc)+log10(30.)
+  lrmax=log10(rdisc)+log10(100.)
   dlr=(lrmax-lrmin)/real(nrbin-1)
   
   nzbin=500
@@ -555,6 +556,11 @@ program main
 
   if(ispoisson) then
      iseed=-19723616
+
+     print *, iseed
+        
+     
+     
      do
         mtot=ran3(iseed)*mdisc_keep   ! Know total mass - random number sets the enclosed mass
 
@@ -602,12 +608,33 @@ program main
         vel(3,nn)=0.0
         
         id(nn)=nn
+
+        xc=xc+pos(1,nn)
+        yc=yc+pos(2,nn)
+        zc=zc+pos(3,nn)
+        
+        vxc=vxc+vel(1,nn)
+        vyc=vyc+vel(2,nn)
+        vzc=vzc+vel(3,nn)
+        
+        vxc2=vxc2+vel(1,nn)**2
+        vyc2=vyc2+vel(2,nn)**2
+        vzc2=vzc2+vel(3,nn)**2     
+
+        jx=jx+(pos(2,nn)*vel(3,nn)-pos(3,nn)*vel(2,nn))
+        jy=jy-(pos(1,nn)*vel(3,nn)-pos(3,nn)*vel(1,nn))
+        jz=jz+(pos(1,nn)*vel(2,nn)-pos(2,nn)*vel(1,nn))
+        
         
         ug(nn)=cs*cs/(gamma-1)
      end do
   else
      mtot=m0
      dm=mpart
+
+     print *, mtot, dm
+        
+     
      do
         mtot=mtot+dm
      
