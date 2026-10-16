@@ -35,6 +35,13 @@ class Params:
     # &GAS_DISC
     temp: float = 1e4
     ndisc: int = 0
+    # &GAS_HALO
+    fbaryon: float = 0.16
+    nhalo: int = 0
+    lambda_b: float = 0.0
+    v_radial: float = 0.0
+    rtrunc: float = 1.0
+    form: str = "nfw"
     # &BLACK_HOLE
     mbh: float = 0.0
     # &NBODY
@@ -69,7 +76,7 @@ class Params:
     snap_z: bool = False  # snap vertical positions to the z table, as Fortran
 
 
-_GROUPS = ("halo", "disc", "bulge", "gas_disc", "black_hole", "nbody", "output", "misc", "model")
+_GROUPS = ("halo", "disc", "bulge", "gas_disc", "gas_halo", "black_hole", "nbody", "output", "misc", "model")
 _LIST_FIELDS = ("npart_comp", "fmass_comp", "rscale_comp", "raniso_comp", "rtrunc_comp", "form_comp")
 
 

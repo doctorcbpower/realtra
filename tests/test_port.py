@@ -70,3 +70,77 @@ def test_vectorised_solver_sech2():
     rho0, f, cum, _ = gas_disc.solve_rings(np.array([sigma]), z, np.zeros((1, z.size)), cs)
     z0 = cs ** 2 / (PI * GGDT * sigma)
     assert abs(sigma / (2 * rho0[0]) / z0 - 1) < 2e-3
+
+
+# ---------------------------------------------------------------- gas halo
+import pytest
+
+from galaxy_components import backgroundgrid, compound, gas_halo
+from galaxy_components.model import build_model
+
+
+@pytest.mark.parametrize("consistent", [False, True])
+def test_gas_halo_is_hydrostatic(consistent):
+    p = read_params(DATA / "galaxy_params.txt")
+    h = gas_halo.build_gas_halo(p, consistent=consistent, verbose=False)
+    r = h.r200 * np.array([0.01, 0.05, 0.2, 0.6, 1.0])
+    eps = 1e-4
+    dP = (h.pressure(r * (1 + eps)) - h.pressure(r * (1 - eps))) / (2 * eps * r)
+    x = r / h.a
+    fc = gas_halo._fnorm(h.kind, h.conc)
+    # K&S normalisation: M(<r) = m_ref f(x)/f(c), with m_ref = M_halo(<r200)
+    m_ref = h.m200 if not consistent else h.m200 * float(fc)
+    m_enc = m_ref * gas_halo._fnorm(h.kind, x) / fc
+    assert np.allclose(dP / h.rho(r), -GGDT * m_enc / r ** 2, rtol=2e-3)
+
+
+def test_gas_halo_matches_fortran_reference():
+    p = read_params(DATA / "galaxy_params.txt")
+    h = gas_halo.build_gas_halo(p, consistent=False, verbose=False)
+    assert abs(h.gamma_poly - 1.185) < 1e-9          # Fortran log: 1.185
+    assert abs(h.temp0 / 3793166.51 - 1) < 2e-3      # Fortran log: 3793166.51 K
+    assert abs(h.mgas - 0.16 * 100.0) < 1e-12
+
+
+def test_background_grid_conserves_and_tiles():
+    rng = np.random.default_rng(3)
+    pos = rng.normal(size=(4000, 3)) * np.array([1.0, 1.0, 0.2])
+    vel = rng.normal(size=(4000, 3))
+    mass = rng.random(4000) + 0.5
+    u = rng.random(4000) + 1.0
+    out = backgroundgrid.add_background_grid(pos, vel, mass, u, verbose=False)
+    m = out["mass"]
+    assert np.isclose(m.sum(), mass.sum(), rtol=1e-12)
+    assert np.allclose((m[:, None] * out["vel"]).sum(0), (mass[:, None] * vel).sum(0), atol=1e-9)
+    assert np.isclose((m * out["u"]).sum(), (mass * u).sum(), rtol=1e-12)
+    # leaf nodes are disjoint cubes
+    assert out["volume"].sum() < out["boxsize"] ** 3
+    lo = out["pos"] - 0.5 * out["volume"][:, None] ** (1 / 3)
+    hi = out["pos"] + 0.5 * out["volume"][:, None] ** (1 / 3)
+    # no cell centre lies inside another cell
+    from scipy.spatial import cKDTree
+    t = cKDTree(out["pos"])
+    side = out["volume"] ** (1 / 3)
+    for i in rng.choice(len(side), 200, replace=False):
+        for j in t.query_ball_point(out["pos"][i], r=side[i] * 1.8):
+            if j != i:
+                assert not np.all((out["pos"][j] > lo[i]) & (out["pos"][j] < hi[i]))
+
+
+def test_spline_kernel_is_normalised():
+    h = 1.7
+    r = np.linspace(0, h, 20001)
+    assert abs(np.trapezoid(4 * PI * r ** 2 * backgroundgrid.kernel(r / h, h), r) - 1) < 1e-6
+
+
+def test_disc_truncation_follows_halo_pressure():
+    p = read_params(DATA / "galaxy_params.txt")
+    p.ndisc = 100
+    disc = gas_disc.build_gas_disc(p, build_model(p, verbose=False), verbose=False)
+    cold = gas_halo.build_gas_halo(p, verbose=False)
+    cold.rho = lambda r: 1e-12 * np.ones_like(np.asarray(r, dtype=float))   # negligible halo
+    t, mfrac, _ = compound.truncate_disc(disc, cold)
+    assert t.mrtab[-1] > 0.97 * disc.mrtab[-1]
+    hot = gas_halo.build_gas_halo(p, verbose=False)
+    t2, mfrac2, _ = compound.truncate_disc(disc, hot)
+    assert t2.mrtab[-1] < 0.5 * disc.mrtab[-1]            # real halo crushes the outer disc

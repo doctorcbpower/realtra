@@ -173,3 +173,43 @@ component, e.g. `form_comp(2)='hernquist'`.
   the local vertical term, and its radial pull through the Freeman formula). It does not feed back
   on the halo, and the halo is not re-equilibrated to the disc.
 * True disc + halo equilibrium (made-to-measure or Schwarzschild-type) is out of scope here.
+
+### Gas halo, compounding with the disc, and the AREPO background grid
+
+```
+> python -m galaxy_components halo   parameters.txt --outdir out   # gas halo only (mk_gas_halo)
+> python -m galaxy_components galaxy parameters.txt --outdir out --background-grid   # everything -> AREPO IC
+```
+
+**The gas halo** is the Komatsu & Seljak (2001) polytropic hydrostatic solution in a *dark-matter-only*
+halo (`&GAS_HALO`: `fbaryon`, `nhalo`, `rtrunc`, `form`). Closed forms replace the Fortran quadratures;
+it reproduces the Fortran gamma, T0 and radial profiles. Two things differ by default:
+* `consistent` (default on, `--legacy` off): the Fortran builds the Hernquist gas halo with
+  `a = r200/c200` and mass `M200`, whereas the disc and N-body codes use the GalIC scale
+  `a = (r200/c200) sqrt(2 f(c))`. The gas halo therefore sat in a different potential from the disc.
+  The default now uses the same dark halo everywhere (for c=10 this changes gamma 1.185 -> 1.143 and
+  T0 3.8e6 -> 1.6e6 K).
+* The Fortran gives each halo particle a Gaussian velocity of sigma = sqrt(2u) per component (~ the
+  sound speed, ~250 km/s) on top of its thermal energy. This is kept by default; `--cold` removes it.
+  `lambda_b` (spin) is not applied in the Fortran (code commented out) and is ignored here too.
+
+**How the halo and disc compound.** The two gas components are computed independently, each assuming
+the other is absent, and `merge_comps` simply concatenates them. Where they overlap this double counts
+mass and ignores the pressure the hot halo exerts on the cold disc. `galaxy` instead (default) applies
+a pressure-balance criterion: the disc exists where `P_disc = rho_d cs^2 >= P_halo(r)`. The disc is cut
+at that height (rings whose midplane pressure is below the halo's vanish) and halo particles inside the
+disc region are removed; `--naive-merge` gives the old behaviour. This is only approximately an
+equilibrium: the halo ignores the disc's gravity and the disc ignores the halo's weight. With the
+default parameters the effect is large (a 10^4 K disc is overpressured by a cuspy 1.5x10^6 K halo beyond
+~1 R_d), which is a real property of those parameters rather than an artefact -- see the printed
+`disc_mass_after_truncation`.
+
+**Background grid** (`--background-grid`) is a port of AREPO's `ADDBACKGROUNDGRID`
+(`src/add_backgroundgrid`): an oct-tree is built on the gas, a massless cell is placed at each leaf-node
+centre, and every particle's mass, energy and momentum are spread onto the cells within its smoothing
+length with the cubic-spline kernel (conserved exactly; the smoothing length is recomputed as the
+distance to the `--nngb`-th neighbour, since AREPO does not read one from the IC). The box is set to
+`--boxsize-factor` (default 5, clamped to AREPO's 2-15) times the gas extent, all species are shifted to
+the box centre, and `BoxSize` is written to the header. Cells are written as double precision with a
+`Masses` block. The AREPO values `BoxSize` and `ReferenceGasPartMass` are printed; AREPO's `MeanVolume`
+comes from its internal `GridSize`, which is not reproduced here.
