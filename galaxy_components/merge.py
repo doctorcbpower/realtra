@@ -17,8 +17,10 @@ from pathlib import Path
 
 import numpy as np
 
+from scipy.spatial import cKDTree
+
 from . import backgroundgrid
-from .constants import GGDT
+from .constants import GAMMA, GGDT
 from .io import write_hdf5
 from .system import System
 
@@ -118,6 +120,76 @@ def orbit_two_body(m1, m2, r_init, r_peri, ecc=1.0):
     return (-m2 / M * rel_pos, -m2 / M * rel_vel, m1 / M * rel_pos, m1 / M * rel_vel)
 
 
+# ---- gas interfaces between systems ------------------------------------------------
+class GasField:
+    """Particle-based gas pressure estimate P = (gamma-1) rho u at arbitrary points.
+
+    rho is the mass of the k nearest gas particles over the volume of the sphere
+    reaching the k-th; u their mass-weighted mean.  The same estimator is used for
+    a system's own particles and for queries from other systems, so the two are
+    directly comparable (and it needs nothing but the particles, so it also works
+    for systems loaded from files).
+    """
+
+    def __init__(self, pos, mass, u, k=32):
+        self.k = int(min(k, len(pos)))
+        self.tree = cKDTree(pos)
+        self.mass = np.broadcast_to(np.asarray(mass, dtype=float), (len(pos),))
+        self.u = np.asarray(u, dtype=float)
+
+    def pressure(self, x):
+        d, idx = self.tree.query(np.atleast_2d(x), k=self.k, workers=-1)
+        d = d.reshape(len(np.atleast_2d(x)), -1)
+        idx = idx.reshape(d.shape)
+        r = np.maximum(d[:, -1], 1e-30)
+        m = self.mass[idx].sum(1)
+        rho = m / (4.0 / 3.0 * np.pi * r ** 3)
+        u = (self.mass[idx] * self.u[idx]).sum(1) / m
+        return (GAMMA - 1.0) * rho * u
+
+
+def resolve_gas_overlap(placed, k=32, verbose=True):
+    """Pressure-balance the interfaces where the gas of different systems overlaps.
+
+    At each gas particle of system i, compare its own pressure P_i with the
+    pressure P_j that every other system j would have at that point; the
+    particle is removed if any P_j > P_i.  So in a region where two gas
+    distributions overlap, the higher-pressure one is kept and the other is
+    cut away, instead of the two being superposed (which would double the
+    mass and put the interface out of pressure balance).  All pressures are
+    taken from the *original* particle sets, so the rule is symmetric.
+    Returns (new systems, stats).
+    """
+    log = print if verbose else (lambda *a, **k: None)
+    gas = [s for s in placed if 0 in s.species and len(s.species[0]["pos"]) > 1]
+    if len(gas) < 2:
+        return placed, {}
+    fields = {s.name: GasField(s.species[0]["pos"], s.species[0]["mass"], s.species[0]["ug"], k)
+              for s in gas}
+    out, stats = [], {}
+    for s in placed:
+        if s.name not in fields:
+            out.append(s)
+            continue
+        g = s.species[0]
+        p_own = fields[s.name].pressure(g["pos"])
+        lose = np.zeros(len(p_own), dtype=bool)
+        for other, f in fields.items():
+            if other != s.name:
+                lose |= f.pressure(g["pos"]) > p_own
+        t = s.copy()
+        m_before = float(np.sum(np.broadcast_to(g["mass"], (len(lose),))))
+        _subset(t.species[0], ~lose)
+        m_lost = m_before - float(np.sum(np.broadcast_to(t.species[0]["mass"], (len(t.species[0]["pos"]),))))
+        stats[s.name] = dict(removed=int(lose.sum()), of=int(len(lose)), mass_removed=m_lost,
+                             mass_fraction=m_lost / m_before)
+        t.meta["gas_overlap"] = stats[s.name]
+        out.append(t)
+        log(f"[{s.name}] gas overlap: removed {int(lose.sum())} of {len(lose)} particles "
+            f"({100 * m_lost / m_before:.2f}% of its gas mass)")
+    return out, stats
+
+
 # ---- stitching ------------------------------------------------------------------
 def stitch(systems, type_maps=None, verbose=True):
     """Concatenate placed systems into one species dict.
@@ -204,6 +276,9 @@ def merge_from_config(cfg_path, outdir=".", seed=None, verbose=True):
 
         output = "merger.hdf5"
         seed = 7
+        [gas_overlap]                # optional; default mode = "pressure"
+        mode = "pressure"            # or "none" (plain superposition, warns if extents overlap)
+        k = 32                       # neighbours for the pressure estimate
         [background_grid]            # optional
         enabled = true
         boxsize_factor = 5
@@ -273,7 +348,14 @@ def merge_from_config(cfg_path, outdir=".", seed=None, verbose=True):
 
     placed = [place(s, pos[k], vel[k], sc.get("euler", (0, 0, 0)))
               for k, (s, sc) in enumerate(zip(built, cfg["system"]))]
-    _warn_overlap(placed, verbose)
+    ov = cfg.get("gas_overlap", {})
+    mode = ov.get("mode", "pressure")
+    if mode == "pressure":
+        placed, _ = resolve_gas_overlap(placed, ov.get("k", 32), verbose)
+    elif mode == "none":
+        _warn_overlap(placed, verbose)
+    else:
+        raise ValueError(f"gas_overlap.mode must be 'pressure' or 'none', got {mode!r}")
     maps = [{int(a): int(b) for a, b in sc.get("type_map", {}).items()} or None for sc in cfg["system"]]
     species = stitch(placed, maps, verbose=verbose)
     bg = cfg.get("background_grid", {})

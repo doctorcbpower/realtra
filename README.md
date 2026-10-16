@@ -258,7 +258,17 @@ An `[orbit]` table (`systems`, `r_init`, `r_peri`, `ecc`) sets the positions and
 on a Kepler orbit in the centre-of-mass frame. `[background_grid]` builds **one** AREPO background grid on
 the combined gas (so all systems share one tree and one box), and everything is shifted into the box.
 
-Caveats: systems are *superposed*, not re-equilibrated. Where the gas of two systems overlaps at the
-start the gas is simply added (a warning is printed if the extents overlap), and each N-body halo is
-sampled in isolation. Choose `r_init` larger than the sum of the gas extents (`rtrunc * r200` each) for a
-clean start, or accept that the first dynamical time contains an interaction transient.
+**Gas interfaces between systems.** Where the gas of two systems overlaps, `merge` applies a pairwise
+pressure-balance rule (default; `[gas_overlap] mode = "pressure"`, `k = 32`) in the spirit of Donnert (2013),
+who resamples the overlapping gas rather than adding it. Each gas particle's pressure
+P = (gamma-1) rho u is estimated from its k nearest neighbours; a particle is removed if any other system's
+gas would have a higher pressure at that point. So at an interface the higher-pressure gas wins and the
+other is cut away, rather than the two being superposed (which double counts mass and leaves the boundary
+out of pressure balance). It needs only particles, so it works for systems loaded from files; the cost is a
+noisy estimate and a sharp cut. Set `mode = "none"` for plain superposition (a warning is printed if the gas
+extents overlap). In the 400 kpc example only 0.2% of the secondary's gas is removed.
+
+Remaining caveats: systems are not re-equilibrated (each N-body halo is sampled in isolation; the cut
+interface is in pressure balance only to the accuracy of the k-neighbour estimate), and an interface cut
+this way is not smoothed, so expect a short transient. Choose `r_init` larger than the sum of the gas
+extents (`rtrunc * r200` each) for the cleanest start.

@@ -120,3 +120,36 @@ npart_comp = [300, 0, 0, 0, 0]
         n = f["Header"].attrs["NumPart_Total"]
         assert n[1] > 0 and n[2] > 0 and n[0] > 0 and f["Header"].attrs["BoxSize"] > 0
         assert f["Header"].attrs["Flag_DoublePrecision"] == 1
+
+
+def _sphere(name, centre, u, n=6000, radius=40.0, seed=0, mass_total=1.0):
+    rng = np.random.default_rng(seed)
+    x = rng.normal(size=(n, 3))
+    x = x / np.linalg.norm(x, axis=1)[:, None] * radius * rng.random(n)[:, None] ** (1 / 3)
+    return System(name, {0: dict(pos=x + centre, vel=np.zeros((n, 3)), mass=mass_total / n,
+                                 ug=np.full(n, float(u)))}, {})
+
+
+def test_gas_overlap_keeps_higher_pressure_gas():
+    hot = _sphere("hot", [0, 0, 0], u=4.0, seed=1)
+    cold = _sphere("cold", [50, 0, 0], u=1.0, seed=2)          # spheres of radius 40 overlap in x in [10, 40]
+    (h2, c2), stats = merge.resolve_gas_overlap([hot, cold], verbose=False)
+    # the cold gas is cut where it lies inside the hot sphere's bulk ...
+    assert stats["cold"]["removed"] > 0.15 * stats["cold"]["of"]
+    xc = c2.species[0]["pos"]
+    inside = np.linalg.norm(xc, axis=1) < 30                      # well inside the hot sphere
+    assert inside.sum() < 0.02 * (np.linalg.norm(cold.species[0]["pos"], axis=1) < 30).sum() + 5
+    # ... while the hot gas is essentially untouched
+    assert stats["hot"]["removed"] < 0.02 * stats["hot"]["of"]
+    # swapping the roles swaps the outcome
+    hot2 = _sphere("hot", [50, 0, 0], u=4.0, seed=1)
+    cold2 = _sphere("cold", [0, 0, 0], u=1.0, seed=2)
+    _, st2 = merge.resolve_gas_overlap([cold2, hot2], verbose=False)
+    assert st2["cold"]["removed"] > 0.15 * st2["cold"]["of"] and st2["hot"]["removed"] < 0.02 * st2["hot"]["of"]
+
+
+def test_gas_overlap_leaves_separate_systems_alone():
+    a = _sphere("a", [0, 0, 0], u=3.0, seed=3)
+    b = _sphere("b", [500, 0, 0], u=1.0, seed=4)
+    _, stats = merge.resolve_gas_overlap([a, b], verbose=False)
+    assert stats["a"]["removed"] == 0 and stats["b"]["removed"] == 0
