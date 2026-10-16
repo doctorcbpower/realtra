@@ -78,11 +78,12 @@ def _expdisc_nodes(R, Rd, nglq=16):
     """Gauss-Legendre nodes/weights in k for the Hankel integral at radius R.
 
     Panels resolve (i) the log-spaced scale 1/Rd .. 1/z and (ii) the J0(kR)
-    oscillations (period 2 pi / R), so the same rule is valid for all z.
+    oscillations, so the same rule is valid for all z.
     """
     kmax = 150.0 / Rd
-    geom = np.geomspace(1e-4 / Rd, kmax, 60)
-    nlin = int(np.ceil(kmax * R / PI)) + 1
+    geom = np.geomspace(1e-4 / Rd, kmax, 40)
+    # J0(kR) has period 2pi/R; 16-point panels two periods wide are converged to ~1e-14
+    nlin = int(np.ceil(kmax * R / (4 * PI))) + 1
     lin = np.linspace(0.0, kmax, nlin + 1) if nlin > 1 else np.array([0.0, kmax])
     edges = np.unique(np.concatenate(([0.0], geom, lin)))
     xg, wg = np.polynomial.legendre.leggauss(nglq)

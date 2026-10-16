@@ -48,3 +48,25 @@ def test_nbody_distribution_function_matches_fortran():
     m = ref[:, 1] > 0
     assert ((py > 0) == m).all()
     assert np.abs(py[m] / ref[m, 1] - 1).max() < 0.015  # ~0.9% observed
+
+
+def test_vectorised_ring_solver_matches_scipy_reference():
+    cs = 9.0
+    z = 10 ** np.linspace(-15, 1.3, 500)
+    # background: a mix of mild and strong vertical potentials
+    R = np.array([0.5, 2.0, 8.0])
+    phibz = np.stack([0.5 * k ** 2 * z ** 2 / (1 + z) for k in (30.0, 80.0, 150.0)])
+    sig = np.array([0.02, 0.005, 0.0008])
+    rho0, f, cum, _ = gas_disc.solve_rings(sig, z, phibz, cs)
+    for i in range(3):
+        r_ref, f_ref, cum_ref, _ = gas_disc.solve_ring(sig[i], z, phibz[i], cs)
+        assert abs(rho0[i] / r_ref - 1) < 2e-4
+        assert np.allclose(cum[i, -1], cum_ref[-1], rtol=2e-4)
+
+
+def test_vectorised_solver_sech2():
+    cs, sigma = 9.0, 0.01
+    z = 10 ** np.linspace(-6, 1.5, 400)
+    rho0, f, cum, _ = gas_disc.solve_rings(np.array([sigma]), z, np.zeros((1, z.size)), cs)
+    z0 = cs ** 2 / (PI * GGDT * sigma)
+    assert abs(sigma / (2 * rho0[0]) / z0 - 1) < 2e-3
