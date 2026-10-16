@@ -1,8 +1,8 @@
 > **Legacy Fortran codes.** This directory holds the original Fortran implementation (sources and `makefile`).
 > It is kept for reference and for cross-checking; the maintained implementation is the Python package
 > [`galaxy_components`](../galaxy_components) described in the [top-level README](../README.md).
-> Build here with `make`; run as `./mk_gas_disc.exe ../parameters.txt` (the parameter file lives one level up and is
-> shared with the Python code). The text below is the original README, unchanged.
+> Build here with `make`; run as `./mk_gas_disc.exe ../examples/galaxy_params.txt` (the namelist format is shared with
+> the Python code; any parameter file works). The text below is the original README, unchanged.
 
 # build_galaxy_components
 
