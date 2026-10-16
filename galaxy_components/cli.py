@@ -85,58 +85,40 @@ def run_halo(args):
 
 
 def run_galaxy(args):
-    """Disc + halo gas (+ N-body) in one file, optionally with an AREPO background grid."""
-    p = read_params(args.params)
+    """One system (disc + halo gas + N-body) in one file, optionally with an AREPO background grid."""
+    from .merge import finalise, write_merged
+    from .system import build_system
     out = Path(args.outdir)
     out.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(args.seed)
+    p = read_params(args.params)
+    sysm = build_system(p, name="galaxy", seed=args.seed, naive_merge=args.naive_merge,
+                        halo_core=_core(p, args) if args.halo_core is not None else None,
+                        legacy_halo=args.legacy_halo, cold_halo=args.cold_halo,
+                        nbody_components=not args.no_nbody, verbose=True)
+    species, boxsize = finalise(sysm.species, args.background_grid, args.boxsize_factor, args.nngb)
+    write_merged(out / (args.name or "galaxy_ic.hdf5"), species, boxsize)
 
-    model = build_model(p)
-    disc = gas_disc.build_gas_disc(p, model, verbose=False)
-    halo = gas_halo.build_gas_halo(p, consistent=not args.legacy_halo)
-    halo = gas_halo.add_entropy_core(p, halo, _core(p, args))
-    hpos, hvel, hug, hmp = gas_halo.sample_gas_halo(p, halo, rng, velocity_noise=not args.cold_halo)
 
-    if args.naive_merge:
-        sdisc = disc
-    else:
-        sdisc, mfrac, _ = compound.truncate_disc(disc, halo)
-        print(compound.mass_summary(disc, sdisc, mfrac))
-        keep = compound.excise_halo(hpos, disc, halo)
-        print(f"excised {int((~keep).sum())} of {len(keep)} halo particles inside the disc")
-        hpos, hvel, hug = hpos[keep], hvel[keep], hug[keep]
-    dpos, dvel, dug, dmp = gas_disc.sample_particles(p, sdisc, p.ndisc, rng)
+def run_system(args):
+    """Alias of ``galaxy``: build a single system file that can later be stitched."""
+    run_galaxy(args)
 
-    gas = dict(pos=np.concatenate((dpos, hpos)), vel=np.concatenate((dvel, hvel)),
-               ug=np.concatenate((dug, hug)),
-               mass=np.concatenate((np.full(len(dpos), dmp), np.full(len(hpos), hmp))))
-    species = {0: gas}
 
-    if not args.no_nbody and p.ncomp > 0 and p.npart_comp[0] > 0:
-        nb = nbody.build_nbody(p, verbose=False)
-        for i, c in enumerate(nbody.sample_nbody(p, nb, rng, verbose=False)):
-            species[i + 1] = dict(pos=c["pos"], vel=c["vel"], mass=c["mpart"])
-    if p.mbh > 0:
-        species[5] = dict(pos=np.zeros((1, 3)), vel=np.zeros((1, 3)), mass=p.mbh)
-
-    boxsize = 0.0
-    if args.background_grid:
-        bgo = backgroundgrid.add_background_grid(gas["pos"], gas["vel"], gas["mass"], gas["ug"],
-                                                 boxsize_factor=args.boxsize_factor, nngb=args.nngb)
-        species[0] = dict(pos=bgo["pos"], vel=bgo["vel"], mass=bgo["mass"], ug=bgo["u"])
-        for t, s in species.items():
-            if t != 0:
-                s["pos"] = np.asarray(s["pos"], dtype=float) + bgo["offset"]
-        boxsize = bgo["boxsize"]
-        print("AREPO suggestions:", bgo["suggest"])
-    fname = out / (args.name or "galaxy_ic.hdf5")
-    write_hdf5(fname, species, boxsize=boxsize, double=args.background_grid)
+def run_merge(args):
+    from .merge import merge_from_config
+    merge_from_config(args.config, args.outdir, seed=args.seed)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="galaxy_components")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("disc", run_disc), ("nbody", run_nbody), ("halo", run_halo), ("galaxy", run_galaxy)):
+    mp = sub.add_parser("merge", help="stitch several systems (TOML config) into one IC file")
+    mp.add_argument("config")
+    mp.add_argument("--outdir", default=".")
+    mp.add_argument("--seed", type=int, default=None)
+    mp.set_defaults(fn=run_merge)
+    for name, fn in (("disc", run_disc), ("nbody", run_nbody), ("halo", run_halo), ("galaxy", run_galaxy),
+                     ("system", run_system)):
         sp = sub.add_parser(name)
         sp.add_argument("params")
         sp.add_argument("--outdir", default=".")
@@ -144,7 +126,7 @@ def main(argv=None):
         if name == "nbody":
             sp.add_argument("--fix-legacy", action="store_true",
                             help="correct Fortran edge-extrapolation quirk instead of reproducing it")
-        if name in ("halo", "galaxy"):
+        if name in ("halo", "galaxy", "system"):
             sp.add_argument("--halo-core", type=float, default=None,
                             help="gas entropy floor / K&S entropy at r200 (overrides &MODEL halo_core)")
         if name == "halo":
@@ -152,7 +134,7 @@ def main(argv=None):
                             help="Fortran halo potential (a=r200/c200, M200) instead of the disc's dark halo")
             sp.add_argument("--cold", action="store_true",
                             help="no Gaussian velocity noise (Fortran adds sigma=sqrt(2u))")
-        if name == "galaxy":
+        if name in ("galaxy", "system"):
             sp.add_argument("--legacy-halo", action="store_true")
             sp.add_argument("--cold-halo", action="store_true")
             sp.add_argument("--naive-merge", action="store_true",

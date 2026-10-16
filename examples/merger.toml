@@ -1,0 +1,39 @@
+# Two-galaxy parabolic merger with one AREPO background grid.
+#   python -m galaxy_components merge examples/merger.toml --outdir out
+output = "merger_ic.hdf5"
+seed = 7
+
+[background_grid]
+enabled = true
+boxsize_factor = 5
+nngb = 64
+
+[orbit]                       # sets position/velocity of systems 0 and 1 (COM frame, x-y plane)
+systems = [0, 1]
+r_init = 400.0                # kpc
+r_peri = 30.0
+ecc = 1.0
+
+[[system]]
+name = "primary"
+params = "galaxy_params.txt"
+euler = [0, 0, 0]
+[system.options]
+halo_core = 0.1
+[system.overrides]
+ndisc = 40000
+nhalo = 40000
+npart_comp = [60000, 0, 0, 0, 0]
+
+[[system]]
+name = "secondary"
+params = "galaxy_params.txt"
+euler = [0, 60, 0]            # inclined disc
+type_map = { 1 = 2 }          # keep its dark halo as PartType2
+[system.options]
+halo_core = 0.1
+[system.overrides]
+m200 = 30.0
+ndisc = 15000
+nhalo = 15000
+npart_comp = [25000, 0, 0, 0, 0]

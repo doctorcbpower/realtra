@@ -237,3 +237,28 @@ lower `fbaryon`, a hotter or more extended disc (`temp`, `fdisc`), or accepting 
 pressure-confined. Note that a core pushes gas outwards: for fixed M_gas(<r200) there is more mass
 between r200 and `rtrunc`*r200 (at f = 0.1 the sampled halo is ~1.6 x heavier), so reduce `rtrunc` if
 that matters.
+
+### Building systems and stitching them together (replaces `merge_comps`)
+
+The old workflow built gas disc, gas halo and N-body parts as separate files and glued them with
+`merge_comps.exe`. The Python workflow builds each **system** (one galaxy: gas disc + gas halo +
+N-body components, already compounded by pressure balance) and then stitches any number of systems into one file.
+
+```
+> python -m galaxy_components system  galaxy.txt --outdir out --name gal1.hdf5   # a single system
+> python -m galaxy_components merge   examples/merger.toml --outdir out          # stitch several
+```
+`merge` reads a TOML file (see `examples/merger.toml`). Each `[[system]]` is either built from a
+parameter file (`params`, with optional `[system.overrides]` of any `&...` parameter and
+`[system.options]` such as `halo_core`) or loaded from an existing GADGET HDF5 file (`file`, including
+files from the Fortran codes). Per system you can set `position`, `velocity`, `euler = [phi, theta, psi]`
+(degrees, z-x-z), `type_map = {1 = 2}` (keep a system's halo as a separate PartType) and the old
+`merge_comps` tidying options: `taper_mass`, `reduce_stellar_mass = {type, fraction}`, `excise_types`.
+An `[orbit]` table (`systems`, `r_init`, `r_peri`, `ecc`) sets the positions and velocities of two systems
+on a Kepler orbit in the centre-of-mass frame. `[background_grid]` builds **one** AREPO background grid on
+the combined gas (so all systems share one tree and one box), and everything is shifted into the box.
+
+Caveats: systems are *superposed*, not re-equilibrated. Where the gas of two systems overlaps at the
+start the gas is simply added (a warning is printed if the extents overlap), and each N-body halo is
+sampled in isolation. Choose `r_init` larger than the sum of the gas extents (`rtrunc * r200` each) for a
+clean start, or accept that the first dynamical time contains an interaction transient.
