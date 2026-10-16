@@ -168,3 +168,27 @@ def test_entropy_core_halo():
     disc = gas_disc.build_gas_disc(p, build_model(p, verbose=False), verbose=False)
     kept = [compound.truncate_disc(disc, hh)[0].mrtab[-1] for hh in (ks, h)]
     assert kept[1] > 1.5 * kept[0]
+
+
+def test_zero_pressure_edge_halo():
+    p = read_params(DATA / "galaxy_params.txt")
+    ks = gas_halo.build_gas_halo(p, verbose=False)
+    rmax = p.rtrunc * ks.r200
+    for f in (0.0, 0.1):
+        h = gas_halo.add_entropy_core(p, ks, f, verbose=False, zero_edge=True)
+        assert abs(np.interp(ks.r200, h.rtab, h.mtab) - 1) < 1e-4          # gas mass inside r200 kept
+        r = rmax * np.array([0.3, 0.6, 0.9, 0.98, 1.0, 1.05])
+        P, T = h.pressure(r), h.u(r) * gas_halo.U_TO_TEMP * gas_halo.MU_HALO
+        assert np.all(np.diff(P) <= 0) and P[5] == 0 and P[4] < 1e-6 * P[0]   # monotone, ~zero at the edge (table-cell limited)
+        assert np.all(np.diff(T) <= 0) and T[5] == 0 and T[4] < 1e-3 * T[0]  # cold edge
+        # hydrostatic away from the edge, in the same dark potential
+        rr = ks.r200 * np.array([0.05, 0.3, 0.8])
+        eps = 1e-4
+        dP = (h.pressure(rr * (1 + eps)) - h.pressure(rr * (1 - eps))) / (2 * eps * rr)
+        fc = gas_halo._fnorm(ks.kind, ks.conc)
+        m_enc = ks.m_ref * gas_halo._fnorm(ks.kind, rr / ks.a) / fc
+        assert np.allclose(dP / h.rho(rr), -GGDT * m_enc / rr ** 2, rtol=2e-2)
+        # sampling stops at the edge with no particles beyond it
+        pos, vel, ug, mp = gas_halo.sample_gas_halo(p, h, np.random.default_rng(0), nhalo=4000, verbose=False)
+        assert np.linalg.norm(pos, axis=1).max() <= rmax * (1 + 1e-6)
+        assert np.all(ug >= 0)

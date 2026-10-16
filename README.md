@@ -272,3 +272,24 @@ Remaining caveats: systems are not re-equilibrated (each N-body halo is sampled 
 interface is in pressure balance only to the accuracy of the k-neighbour estimate), and an interface cut
 this way is not smoothed, so expect a short transient. Choose `r_init` larger than the sum of the gas
 extents (`rtrunc * r200` each) for the cleanest start.
+
+#### Hydrostatic to a finite edge with zero pressure: `--zero-edge`
+
+Following Donnert (2013), `--zero-edge` (or `halo_zero_edge=.true.` in `&MODEL`) solves the halo gas
+hydrostatically only out to R_max = `rtrunc` x r200 and imposes P(R_max) = 0 there, so the density and
+temperature fall smoothly to zero at the edge instead of the gas ending in a pressure cliff. It combines
+with `--halo-core`. With the edge pressure fixed, the gas mass inside r200 is matched by an overall entropy
+scale instead; the sampled halo then holds ~1.01-1.03 x f_baryon M200 instead of 1.06-1.7 x (the free-edge
+solution leaves extra mass between r200 and `rtrunc`). Pressure falls steeply near the edge
+(P ~ (R_max - r)^2.5), so the effective gas edge is at ~0.9 R_max. Effect on the default disc:
+
+| halo                | disc mass kept | disc outer radius | particles for nhalo = 20000 |
+|---------------------|----------------|-------------------|-----------------------------|
+| K&S, free edge      | 19 %           | 2.6 kpc           | 21241                       |
+| K&S, zero edge      | 17 %           | 2.6 kpc           | 20206                       |
+| core 0.1, free edge | 61 %           | 5.7 kpc           | 33775                       |
+| core 0.1, zero edge | 46 %           | 4.5 kpc           | 20588                       |
+
+The zero edge does not help the disc by itself (the edge pressure is irrelevant at a few kpc); it removes
+the heavy low-density envelope, and with a core it moves mass back inside r200, which raises the central
+pressure a little (hence 46 % rather than 61 %).

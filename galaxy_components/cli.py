@@ -73,7 +73,8 @@ def _core(p, args):
 def run_halo(args):
     p = read_params(args.params)
     halo = gas_halo.build_gas_halo(p, consistent=not args.legacy)
-    halo = gas_halo.add_entropy_core(p, halo, _core(p, args))
+    halo = gas_halo.add_entropy_core(p, halo, _core(p, args),
+                                     zero_edge=args.zero_edge or p.halo_zero_edge)
     rng = np.random.default_rng(args.seed)
     pos, vel, ug, mpart = gas_halo.sample_gas_halo(p, halo, rng, velocity_noise=not args.cold)
     out = Path(args.outdir)
@@ -93,6 +94,7 @@ def run_galaxy(args):
     p = read_params(args.params)
     sysm = build_system(p, name="galaxy", seed=args.seed, naive_merge=args.naive_merge,
                         halo_core=_core(p, args) if args.halo_core is not None else None,
+                        zero_edge=True if args.zero_edge else None,
                         legacy_halo=args.legacy_halo, cold_halo=args.cold_halo,
                         nbody_components=not args.no_nbody, verbose=True)
     species, boxsize = finalise(sysm.species, args.background_grid, args.boxsize_factor, args.nngb)
@@ -129,6 +131,8 @@ def main(argv=None):
         if name in ("halo", "galaxy", "system"):
             sp.add_argument("--halo-core", type=float, default=None,
                             help="gas entropy floor / K&S entropy at r200 (overrides &MODEL halo_core)")
+            sp.add_argument("--zero-edge", action="store_true",
+                            help="hydrostatic halo to rtrunc*r200 with zero pressure at the edge (Donnert 2013)")
         if name == "halo":
             sp.add_argument("--legacy", action="store_true",
                             help="Fortran halo potential (a=r200/c200, M200) instead of the disc's dark halo")

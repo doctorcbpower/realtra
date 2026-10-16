@@ -47,7 +47,7 @@ class System:
 
 
 def build_system(params, name="system", seed=1, overrides=None, naive_merge=False,
-                 halo_core=None, legacy_halo=False, cold_halo=False, nbody_components=True,
+                 halo_core=None, zero_edge=None, legacy_halo=False, cold_halo=False, nbody_components=True,
                  verbose=False) -> System:
     """Build one galaxy.  ``params`` is a path or a Params; ``overrides`` a dict of Params fields."""
     p = read_params(params) if not isinstance(params, Params) else params
@@ -70,7 +70,8 @@ def build_system(params, name="system", seed=1, overrides=None, naive_merge=Fals
     if have_halo:
         halo = gas_halo.build_gas_halo(p, consistent=not legacy_halo, verbose=False)
         core = p.halo_core if halo_core is None else halo_core
-        halo = gas_halo.add_entropy_core(p, halo, core, verbose=False)
+        halo = gas_halo.add_entropy_core(p, halo, core, verbose=False,
+                                         zero_edge=p.halo_zero_edge if zero_edge is None else zero_edge)
         hpos, hvel, hug, hmp = gas_halo.sample_gas_halo(p, halo, rng, velocity_noise=not cold_halo,
                                                         verbose=False)
     if have_disc:

@@ -129,23 +129,46 @@ def build_gas_halo(p: Params, ntab=1000, consistent=True, verbose=True) -> HaloG
     return HaloGas(kind, a, m200, r200, conc, gam, a0, temp0, rho0, mgas, rtab, mtab, utab, rho_fn, u_fn, m_ref)
 
 
-def add_entropy_core(p: Params, ks: HaloGas, f_core: float, verbose=True) -> HaloGas:
-    """Raise the central entropy of a K&S halo, keeping the dark potential and gas mass.
+def _loglin_interp(rr, r, y, floor=1e-300):
+    """Interpolate a positive profile log-log, but linearly in the one cell that touches a zero
+    (so a profile that reaches zero at an edge does not get a fake exponential plunge there)."""
+    rr = np.asarray(rr, dtype=float)
+    i = np.clip(np.searchsorted(r, rr) - 1, 0, len(r) - 2)
+    y0, y1 = y[i], y[i + 1]
+    t = (rr - r[i]) / (r[i + 1] - r[i])
+    lin = y0 + (y1 - y0) * t
+    ok = (y0 > floor) & (y1 > floor)
+    tl = (np.log(rr) - np.log(r[i])) / (np.log(r[i + 1]) - np.log(r[i]))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lg = np.exp(np.log(np.where(ok, y0, 1.0)) * (1 - tl) + np.log(np.where(ok, y1, 1.0)) * tl)
+    out = np.where(ok, lg, lin)
+    return np.where(rr >= r[-1], np.maximum(y[-1], 0.0), np.maximum(out, 0.0))
 
-    Entropy is K = P / rho^(5/3).  The K&S halo has K_ks(r) rising outward; here
-    K(r) = K_ks(r) + f_core * K_ks(r200), a constant "floor" that flattens the
-    central density into a core and lowers the central pressure.  Hydrostatic
-    equilibrium dP/dr = -rho G M_dm/r^2 with P = K rho^(5/3) integrates in closed
-    form,
 
-        P(r)^(2/5) = P_out^(2/5) + (2/5) int_r^{r_out} K^(-3/5) G M_dm / r'^2 dr',
+def add_entropy_core(p: Params, ks: HaloGas, f_core: float, verbose=True, zero_edge=False) -> HaloGas:
+    """Re-solve the halo gas for a different entropy profile or a zero-pressure outer edge.
 
-    and the outer pressure P_out is fixed by requiring the gas mass inside r200
-    to stay fbaryon*M200.  f_core = 0 returns the K&S solution exactly.
+    Entropy is K = P / rho^(5/3).  The K&S halo has K_ks(r) rising outward.
+    ``f_core`` adds a constant floor, K(r) = K_ks(r) + f_core * K_ks(r200), which
+    flattens the central density into a core and lowers the central pressure.
+    Hydrostatic equilibrium dP/dr = -rho G M_dm/r^2 with P = K rho^(5/3) integrates in
+    closed form,
+
+        P(r)^(2/5) = P_out^(2/5) + (2/5) int_r^{r_out} K^(-3/5) G M_dm / r'^2 dr'.
+
+    By default P_out is the free parameter, fixed by requiring the gas mass inside
+    r200 to stay fbaryon*M200.  f_core = 0 returns the K&S solution exactly.
+
+    ``zero_edge=True`` instead imposes P = 0 at R_max = rtrunc * r200 (as in
+    Donnert 2013, where the gas is hydrostatic only out to R_max and the pressure
+    vanishes at the boundary), so the gas ends smoothly instead of in a pressure
+    cliff and the temperature falls to zero at the edge.  With P_out fixed the
+    mass is matched by an overall entropy scale s (K -> sK gives rho -> s^(-3/2) rho).
+    Beyond R_max the density is zero.
     """
     if f_core < 0:
         raise ValueError("f_core must be >= 0")
-    if f_core == 0:
+    if f_core == 0 and not zero_edge:
         return ks
     log = print if verbose else (lambda *a, **k: None)
     r = ks.rtab
@@ -160,29 +183,52 @@ def add_entropy_core(p: Params, ks: HaloGas, f_core: float, verbose=True) -> Hal
     lr = np.log(r)
     integrand = k ** (-0.6) * g * r                       # dr = r dln r
     cum_in = integrate.cumulative_simpson(integrand, x=lr, initial=0.0)
-    tail = cum_in[-1] - cum_in                            # int_r^{r_out}
-
-    def profile(p_out):
-        pp = (p_out ** 0.4 + 0.4 * tail) ** 2.5
-        return pp, (pp / k) ** 0.6
-
-    def mass_in(p_out):
-        _, rho = profile(p_out)
-        cum = integrate.cumulative_simpson(4 * PI * r ** 3 * rho, x=lr, initial=0.0)
-        return float(np.interp(np.log(ks.r200), lr, cum)), cum
 
     from scipy import optimize
     target = ks.mgas
-    lo, hi = np.log(p_ks[-1]) - 15, np.log(p_ks[-1]) + 15
-    sol = optimize.brentq(lambda lp: np.log(mass_in(np.exp(lp))[0] / target), lo, hi, xtol=1e-12)
-    pp, rho = profile(np.exp(sol))
-    _, cum = mass_in(np.exp(sol))
-    u = pp / ((GAMMA - 1) * rho)
-    lrr = np.log(r)
-    rho_fn = lambda rr: np.exp(np.interp(np.log(np.asarray(rr, dtype=float)), lrr, np.log(rho)))
-    u_fn = lambda rr: np.exp(np.interp(np.log(np.asarray(rr, dtype=float)), lrr, np.log(u)))
+    floor = 1e-300
+
+    def cumulative_mass(rho):
+        return integrate.cumulative_simpson(4 * PI * r ** 3 * rho, x=lr, initial=0.0)
+
+    if zero_edge:
+        rmax = p.rtrunc * ks.r200
+        if not ks.r200 < rmax <= r[-1]:
+            raise ValueError("zero_edge needs r200 < rtrunc*r200 <= table end")
+        inside = r < rmax
+        tail_unit = np.where(inside, np.interp(np.log(rmax), lr, cum_in) - cum_in, 0.0)
+        tail_unit = np.maximum(tail_unit, 0.0)
+
+        def profile(ls):
+            sc = np.exp(ls)
+            pp = (0.4 * tail_unit * sc ** -0.6) ** 2.5     # K -> sK scales the integral by s^-3/5
+            rho = np.where(inside, (pp / (sc * k)) ** 0.6, 0.0)
+            return pp, rho
+
+        def mass200(ls):
+            return float(np.interp(np.log(ks.r200), lr, cumulative_mass(profile(ls)[1])))
+
+        ls = optimize.brentq(lambda v: np.log(mass200(v) / target), -20.0, 20.0, xtol=1e-12)
+        pp, rho = profile(ls)
+        what = f"zero-pressure edge at {rmax:.4g} kpc ({rmax / ks.r200:.2f} r200), entropy scale {np.exp(ls):.3g}"
+    else:
+        def profile(p_out):
+            pp = (p_out ** 0.4 + 0.4 * (cum_in[-1] - cum_in)) ** 2.5
+            return pp, (pp / k) ** 0.6
+
+        def mass200(p_out):
+            return float(np.interp(np.log(ks.r200), lr, cumulative_mass(profile(p_out)[1])))
+
+        lo, hi = np.log(p_ks[-1]) - 15, np.log(p_ks[-1]) + 15
+        sol = optimize.brentq(lambda lp: np.log(mass200(np.exp(lp)) / target), lo, hi, xtol=1e-12)
+        pp, rho = profile(np.exp(sol))
+        what = f"free edge pressure, f_core={f_core:g}"
+    cum = cumulative_mass(rho)
+    u = np.where(rho > 0, pp / ((GAMMA - 1) * np.maximum(rho, floor)), 0.0)
+    rho_fn = lambda rr: _loglin_interp(rr, r, rho)
+    u_fn = lambda rr: _loglin_interp(rr, r, u)
     temp0 = float(u[0] * U_TO_TEMP * MU_HALO)
-    log(f"Entropy core f_core={f_core:g}: central density {rho[0] / ks.rho(r[0]):.3g} x K&S at r={r[0]:.2g}; "
+    log(f"Halo re-solved ({what}): central density {rho[0] / ks.rho(r[0]):.3g} x K&S; "
         f"P(1 kpc) / K&S = {np.interp(np.log(1.0), lr, pp) / np.interp(np.log(1.0), lr, p_ks):.3g}")
     return HaloGas(ks.kind, ks.a, ks.m200, ks.r200, ks.conc, float("nan"), float("nan"), temp0,
                    float(rho[0]), ks.mgas, r, cum / target, u, rho_fn, u_fn, ks.m_ref)
