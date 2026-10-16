@@ -1,0 +1,53 @@
+# Example parameters for a 1e12 Msol galaxy: gas disc + hot gas halo + N-body halo.
+# Units: kpc, km/s, 1e10 Msol.  Values equal to the defaults may be omitted.
+# Every table and field name is checked, so a typo is an error rather than silently ignored.
+#   galaxy-components galaxy examples/galaxy_params.toml --outdir out
+
+[halo]
+m200 = 100.0              # virial mass [1e10 Msol]  (or set v200 [km/s] instead)
+c200 = 10.0               # NFW concentration
+
+[disc]
+mdisc = 0.04              # disc mass: > 0 is a fraction of M200, <= 0 is an absolute mass
+fdisc = 0.076245          # scale length as a fraction of the halo scale length
+mstar = 0.9               # fraction of the disc that is stars (the rest is gas)
+
+[bulge]
+mbulge = 0.0              # Hernquist bulge mass (fraction of M200); 0 = none
+fbulge = 0.0
+
+[gas_disc]
+temp = 1.0e4              # temperature [K]
+ndisc = 20000             # gas particles in the disc (0 = no gas disc)
+
+[gas_halo]
+fbaryon = 0.16            # baryon fraction inside r200
+nhalo = 20000             # gas particles inside r200 (0 = no gas halo)
+rtrunc = 1.5              # sampling edge, in units of r200
+form = "hernquist"        # dark halo the gas sits in: "nfw" or "hernquist"
+
+[black_hole]
+mbh = 0.0                 # central black-hole mass [1e10 Msol]; 0 = none
+
+[nbody]                   # spherical N-body components; lists are per component (at most 5)
+ncomp = 1
+npart_comp = [20000]
+fmass_comp = [1.0]        # mass in units of M200
+form_comp = ["nfw"]       # "nfw", "hernquist" or "burkert"
+rscale_comp = [1.0]       # scale radius in units of r200/c200
+rtrunc_comp = [2.0]       # truncation radius in units of r200
+istaper = true
+
+[output]
+disc_file = "gas_disc"
+halo_file = "gas_halo"
+nbody_file = "nfw_halo"
+snap_format = 3           # 3 = GADGET HDF5 (the only format written)
+
+[model]                   # options that replaced the Fortran compile-time flags
+halo_type = "hernquist"   # "hernquist", "nfw" or "logarithmic"
+galic = true              # GalIC conventions for the Hernquist halo
+halo_core = 0.0           # gas entropy floor / K&S entropy at r200 (0 = none; ~0.1 keeps more disc)
+halo_zero_edge = false    # hydrostatic halo gas to rtrunc*r200 with P = 0 at the edge
+# nrbin = 150             # gas-disc mesh (radial rings)
+# nzbin = 500             # gas-disc mesh (vertical points)

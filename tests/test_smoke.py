@@ -255,8 +255,10 @@ def test_pyproject_is_consistent():
     assert isinstance(galaxy_components.__version__, str) and galaxy_components.__version__.count(".") == 2
     mod, func = proj["scripts"]["galaxy-components"].split(":")
     assert callable(getattr(importlib.import_module(mod), func))
-    deps = {d.split(">")[0].split("=")[0] for d in proj["dependencies"]}
-    assert {"numpy", "scipy", "h5py", "f90nml"} <= deps
+    name = lambda d: d.split(">")[0].split("=")[0]
+    deps = {name(d) for d in proj["dependencies"]}
+    optional = {name(d) for ds in proj["optional-dependencies"].values() for d in ds}
+    assert {"numpy", "scipy", "h5py"} <= deps and "f90nml" in optional and "f90nml" not in deps
     # every third-party module the package imports is declared
     imported = set()
     for f in (ROOT / "galaxy_components").glob("*.py"):
@@ -265,4 +267,34 @@ def test_pyproject_is_consistent():
             if line.startswith(("import ", "from ")) and not line.startswith("from ."):
                 imported.add(line.split()[1].split(".")[0])
     third_party = imported - set(sys.stdlib_module_names) - {"galaxy_components"}
-    assert third_party <= deps, f"undeclared dependencies: {third_party - deps}"
+    assert third_party <= deps | optional, f"undeclared dependencies: {third_party - deps - optional}"
+    # optional packages must be imported lazily (inside a function), never at module level
+    for f in (ROOT / "galaxy_components").glob("*.py"):
+        for line in f.read_text().splitlines():
+            assert not any(line.startswith((f"import {o}", f"from {o}")) for o in optional), f"{f.name}: {line}"
+
+
+# ------------------------------------------------------------------ TOML parameter files
+def test_convert_then_run_from_toml(params, tmp_path):
+    """convert (namelist -> TOML) writes a file every command can then use."""
+    toml = tmp_path / "p.toml"
+    main(["convert", str(params), "-o", str(toml)])
+    assert toml.read_text().startswith("# Converted from")
+    main(["nbody", str(toml), "--outdir", str(tmp_path)])
+    check_ic(tmp_path / "nfw_halo.gdt.hdf5", {1})
+    main(["galaxy", str(toml), "--outdir", str(tmp_path), "--name", "t.hdf5"])
+    check_ic(tmp_path / "t.hdf5", {0, 1})
+
+
+def test_convert_to_stdout(params, capsys):
+    main(["convert", str(params)])
+    out = capsys.readouterr().out
+    assert "[halo]" in out and "m200" in out
+
+
+def test_example_toml_runs_a_system(tmp_path):
+    """The shipped TOML example is a working parameter file (shrunk so it runs quickly)."""
+    from galaxy_components.system import build_system
+    s = build_system(ROOT / "examples" / "galaxy_params.toml", "x",
+                     overrides=dict(ndisc=300, nhalo=500, npart_comp=[800, 0, 0, 0, 0], nrbin=30, nzbin=150))
+    assert set(s.species) == {0, 1}

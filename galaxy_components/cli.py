@@ -8,7 +8,7 @@ from . import backgroundgrid, compound, gas_disc, gas_halo, nbody
 from .constants import PI, GGDT
 from .io import write_hdf5
 from .model import build_model
-from .params import output_name, read_params
+from .params import output_name, read_params, to_toml
 
 
 def run_disc(args):
@@ -106,6 +106,18 @@ def run_system(args):
     run_galaxy(args)
 
 
+def run_convert(args):
+    """Convert a parameter file (e.g. a legacy Fortran namelist) to TOML."""
+    p = read_params(args.params)
+    text = to_toml(p, header=f"Converted from {Path(args.params).name} by galaxy-components convert.\n"
+                             "Only values that differ from the defaults are written.", all_fields=args.all)
+    if args.output:
+        Path(args.output).write_text(text)
+        print(f"wrote {args.output}")
+    else:
+        print(text, end="")
+
+
 def run_merge(args):
     from .merge import merge_from_config
     merge_from_config(args.config, args.outdir, seed=args.seed)
@@ -114,6 +126,11 @@ def run_merge(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="galaxy_components")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    cp = sub.add_parser("convert", help="convert a parameter file (e.g. a Fortran namelist) to TOML")
+    cp.add_argument("params")
+    cp.add_argument("-o", "--output", help="output .toml file (default: print to stdout)")
+    cp.add_argument("--all", action="store_true", help="write every field, not only non-defaults")
+    cp.set_defaults(fn=run_convert)
     mp = sub.add_parser("merge", help="stitch several systems (TOML config) into one IC file")
     mp.add_argument("config")
     mp.add_argument("--outdir", default=".")

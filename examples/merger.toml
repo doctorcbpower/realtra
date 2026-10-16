@@ -16,7 +16,7 @@ ecc = 1.0
 
 [[system]]
 name = "primary"
-params = "galaxy_params.txt"
+params = "galaxy_params.toml"
 euler = [0, 0, 0]
 [system.options]
 halo_core = 0.1
@@ -27,7 +27,7 @@ npart_comp = [60000, 0, 0, 0, 0]
 
 [[system]]
 name = "secondary"
-params = "galaxy_params.txt"
+params = "galaxy_params.toml"
 euler = [0, 60, 0]            # inclined disc
 type_map = { 1 = 2 }          # keep its dark halo as PartType2
 [system.options]

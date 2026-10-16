@@ -11,8 +11,8 @@ The maintained implementation is the Python package [`galaxy_components/`](galax
 Fortran codes it grew out of are kept in [`legacy/`](legacy/) (with their own README).
 
 ```
-params file ──► disc     gas disc in hydrostatic equilibrium (analytic potential)   ┐
- (namelists)   ──► halo     hot gas halo, hydrostatic in the same dark halo            ├─► system ─► merge ─► IC file
+params.toml ──► disc     gas disc in hydrostatic equilibrium (analytic potential)   ┐
+               ──► halo     hot gas halo, hydrostatic in the same dark halo            ├─► system ─► merge ─► IC file
                ──► nbody    spherical isotropic halo/bulge, Eddington inversion        ┘   (compounded)  (orbit, overlap,
                                                                                                       background grid)
 ```
@@ -29,11 +29,12 @@ Python ≥ 3.11. From a clone of this repository:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[test]"        # numpy>=2, scipy>=1.12, h5py, f90nml (+ pytest); editable, so edits take effect
-pytest -q                       # 49 tests, ~20 s
+pip install -e ".[test]"        # numpy>=2, scipy>=1.12, h5py (+ pytest, f90nml); editable, so edits take effect
+pytest -q                       # 72 tests, ~20 s
 galaxy-components --help        # console script (also: python -m galaxy_components ...)
 ```
-`pip install .` (non-editable) works too, and `pip wheel .` builds a wheel containing only the package. After installing, the scripts in
+The only required dependencies are `numpy`, `scipy` and `h5py`; `f90nml` is optional and only needed to read legacy Fortran
+namelist parameter files (`pip install ".[namelist]"`). `pip install .` (non-editable) works too, and `pip wheel .` builds a wheel containing only the package. After installing, the scripts in
 [`examples/`](examples/) run from anywhere (without installing, run them from the repository root with `PYTHONPATH=.`).
 
 Units throughout: **kpc, km/s, 10¹⁰ M☉** (so G = 4.3×10⁴ kpc (km/s)² / 10¹⁰ M☉).
@@ -42,7 +43,7 @@ Units throughout: **kpc, km/s, 10¹⁰ M☉** (so G = 4.3×10⁴ kpc (km/s)² / 
 
 ```bash
 # a whole galaxy (gas disc + gas halo + N-body halo), with an AREPO background grid
-galaxy-components galaxy examples/galaxy_params.txt --outdir out --background-grid --halo-core 0.1 --zero-edge
+galaxy-components galaxy examples/galaxy_params.toml --outdir out --background-grid --halo-core 0.1 --zero-edge
 
 # a two-galaxy parabolic merger from a TOML description
 galaxy-components merge examples/merger.toml --outdir out
@@ -50,27 +51,47 @@ galaxy-components merge examples/merger.toml --outdir out
 # or script the pieces yourself
 python examples/02_gas_halo.py
 ```
-[`examples/galaxy_params.txt`](examples/galaxy_params.txt) is a ready-made parameter file for a 10¹² M☉ galaxy.
+[`examples/galaxy_params.toml`](examples/galaxy_params.toml) is a commented parameter file for a 10¹² M☉ galaxy.
 
 ## Parameter file
 
-A Fortran-style namelist file (see [`examples/galaxy_params.txt`](examples/galaxy_params.txt)) is read unchanged: the same file format
-is used by the legacy Fortran programs. Groups and the fields used:
+Parameters are a **TOML** file (standard library, no extra dependency): one table per group, real lists and booleans, comments.
+See [`examples/galaxy_params.toml`](examples/galaxy_params.toml) for a commented template.
 
-| group | fields | meaning |
+```toml
+[halo]
+m200 = 100.0            # virial mass [1e10 Msol]
+[gas_disc]
+ndisc = 20000
+[nbody]
+npart_comp = [20000]    # lists may be shorter than 5; unset entries keep their defaults
+form_comp = ["nfw"]
+```
+Files are validated strictly: an unknown table or field, a value of the wrong type, or a field in the wrong table is an error
+that names the file and suggests the right table, so a typo can never be silently ignored. Omitted fields take their defaults.
+
+**Legacy namelists.** A Fortran namelist file (`&HALO ... /`, e.g. the old `parameters.txt`) is still read if it does not end in
+`.toml` and `f90nml` is installed (`pip install ".[namelist]"`). Convert it once with
+
+```bash
+galaxy-components convert parameters.txt -o params.toml      # writes only the non-default values; --all writes everything
+```
+The legacy Fortran programs in [`legacy/`](legacy/) still need the namelist form ([`examples/galaxy_params.txt`](examples/galaxy_params.txt)).
+
+| table | fields | meaning |
 |---|---|---|
-| `&HALO` | `m200`, `v200`, `c200`, `qflat`, `rcore` | virial mass [10¹⁰ M☉] (or `v200`), concentration; log-halo flattening/core |
-| `&DISC` | `mdisc`, `mstar`, `fdisc`, `fhole`, `fdref`, `sigma0` | disc mass (>0: fraction of M200; ≤0: absolute), stellar fraction, scale length as a fraction of the halo scale, inner hole, … |
-| `&BULGE` | `mbulge`, `fbulge` | Hernquist bulge mass and scale |
-| `&GAS_DISC` | `temp`, `ndisc` | gas-disc temperature [K], particle count |
-| `&GAS_HALO` | `fbaryon`, `nhalo`, `rtrunc`, `form`, `v_radial` | baryon fraction, particles inside r200, sampling edge / r200, `'nfw'` or `'hernquist'` |
-| `&BLACK_HOLE` | `mbh` | central black-hole mass |
-| `&NBODY` | `ncomp`, `npart_comp`, `fmass_comp`, `form_comp`, `rscale_comp`, `rtrunc_comp`, `istaper` | N-body components (`'nfw'`, `'hernquist'`, `'burkert'`) |
-| `&OUTPUT` | `disc_file`, `halo_file`, `nbody_file`, `snap_format` | output names; **only HDF5 (`snap_format=3`) is written** |
-| `&MISC` | `ispoisson` | must be `.true.` (glass-file sampling is not ported) |
-| `&MODEL` | `halo_type`, `galic`, `halo_core`, `halo_zero_edge`, `nrbin`, `nzbin`, `snap_z` | **Python only** (ignored by the Fortran): replaces the Fortran `-D` compile flags and holds new options |
+| `[halo]` | `m200`, `v200`, `c200`, `sigma200`, `qflat`, `rcore` | virial mass [10¹⁰ M☉] (or `v200`), concentration; log-halo flattening/core |
+| `[disc]` | `mdisc`, `mstar`, `fdisc`, `fhole`, `fdref`, `sigma0` | disc mass (>0: fraction of M200; ≤0: absolute), stellar fraction, scale length as a fraction of the halo scale, inner hole, … |
+| `[bulge]` | `mbulge`, `fbulge` | Hernquist bulge mass and scale |
+| `[gas_disc]` | `temp`, `ndisc` | gas-disc temperature [K], particle count (0 = no gas disc) |
+| `[gas_halo]` | `fbaryon`, `nhalo`, `rtrunc`, `form`, `lambda_b`, `v_radial` | baryon fraction, particles inside r200 (0 = no gas halo), sampling edge / r200, `"nfw"` or `"hernquist"` |
+| `[black_hole]` | `mbh` | central black-hole mass |
+| `[nbody]` | `ncomp`, `npart_comp`, `fmass_comp`, `form_comp`, `rscale_comp`, `rtrunc_comp`, `raniso_comp`, `istaper`, `fdecay` | N-body components (`"nfw"`, `"hernquist"`, `"burkert"`); lists are per component, at most 5 |
+| `[output]` | `disc_file`, `halo_file`, `nbody_file`, `snap_format` | output names; **only HDF5 (`snap_format = 3`) is written** |
+| `[misc]` | `glass_file`, `ispoisson`, `tabfile`, `istabulated` | `ispoisson` must be `true` (glass-file sampling is not ported) |
+| `[model]` | `halo_type`, `galic`, `exponential_disc`, `halo_core`, `halo_zero_edge`, `nrbin`, `nzbin`, `log_zmin`, `log_zmax`, `snap_z` | options that replaced the Fortran `-D` compile flags, plus the newer ones |
 
-`&MODEL`: `halo_type = 'hernquist' | 'nfw' | 'logarithmic'` (default `'hernquist'`), `galic = .true.` (GalIC
+`[model]`: `halo_type = "hernquist" | "nfw" | "logarithmic"` (default `"hernquist"`), `galic = true` (GalIC
 conventions: the Hernquist halo has total mass `mhalo` and scale `a = r200/c200 · √(2 f(c))`), `halo_core` (entropy
 floor, below), `halo_zero_edge` (zero-pressure edge, below), `nrbin`/`nzbin` (gas-disc mesh, default 150 × 500).
 
@@ -156,7 +177,7 @@ r_peri = 30.0
 ecc = 1.0
 [[system]]
 name = "primary"
-params = "galaxy_params.txt"          # build ...
+params = "galaxy_params.toml"         # build ... (a .toml or a legacy namelist file)
 [system.options]                      # kwargs of build_system (halo_core, zero_edge, cold_halo, ...)
 halo_core = 0.1
 [system.overrides]                    # any Params field
@@ -220,7 +241,7 @@ merge.write_merged("merger.hdf5", species, box)
 | `backgroundgrid` | `add_background_grid` (works on any particle arrays) |
 | `system` | `build_system`, `read_system` |
 | `merge` | `place`, `orbit_two_body`, `resolve_gas_overlap`, `stitch`, `finalise`, `merge_from_config` |
-| `io`, `params`, `presets` | HDF5 writer, namelist reader, ready-made parameter sets |
+| `io`, `params`, `presets` | HDF5 writer, TOML/namelist parameter reader and writer, ready-made parameter sets |
 
 ## Tests
 
@@ -240,7 +261,8 @@ out-of-bounds read in `fintrp` (`legacy/mk_gas_disc.f90`, `xp(0)`).
 | area | Fortran | here |
 |---|---|---|
 | π | 3.14159 | exact |
-| compile-time choices (`-DNFW_HALO`, …) | makefile flags | runtime (`&MODEL`) |
+| compile-time choices (`-DNFW_HALO`, …) | makefile flags | runtime (`[model]`) |
+| parameter file | Fortran namelist | TOML (namelists still read; `convert` command) |
 | gas halo potential | `a = r200/c200`, mass `M200` | same dark halo as the disc (`--legacy` restores) |
 | N-body potential interpolation | extrapolates from the wrong table segment | interpolates correctly |
 | N-body velocity scale | `√(G·mass_comp(1)/r_scale)` | `√(G·mtot/r_scale)` (identical for NFW/Burkert) |

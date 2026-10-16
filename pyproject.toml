@@ -19,11 +19,11 @@ dependencies = [
     "numpy>=2.0",
     "scipy>=1.12",
     "h5py",
-    "f90nml",
 ]
 
 [project.optional-dependencies]
-test = ["pytest"]
+namelist = ["f90nml"]          # read legacy Fortran namelist parameter files
+test = ["pytest", "f90nml"]
 
 [project.scripts]
 galaxy-components = "galaxy_components.cli:main"
