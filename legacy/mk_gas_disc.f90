@@ -73,6 +73,9 @@ program main
 
   real(kind=8), external :: dint,fint,phiz
 
+  real(kind=8) :: dm_bracket, frac
+  integer(kind=4):: lo, hi, mid
+
   character(kind=1,len=132) :: paramfile,glassfile,outfile,tabfile
   logical:: fexist
   logical:: ispoisson
@@ -147,7 +150,7 @@ program main
 #endif
   write(*,*) 'Scale radius:',rs*sqrt(2*(dlog(1+c200)-c200/(1+c200)))
   write(*,*)
-  rdisc=fdisc*rs!*sqrt(2*(dlog(1+c200)-c200/(1+c200)))       ! in units of kiloparsecs
+  rdisc=fdisc*rs*sqrt(2*(dlog(1+c200)-c200/(1+c200)))       ! in units of kiloparsecs
   rbulge=fbulge*rs*sqrt(2*(dlog(1+c200)-c200/(1+c200)))     ! in units of kiloparsecs
   rdisc_hole=fhole*rdisc     ! in units of kpc
 #endif
@@ -557,10 +560,6 @@ program main
   if(ispoisson) then
      iseed=-19723616
 
-     print *, iseed
-        
-     
-     
      do
         mtot=ran3(iseed)*mdisc_keep   ! Know total mass - random number sets the enclosed mass
 
@@ -569,24 +568,54 @@ program main
            exit
         end if
         
-        i=1
-        
-        do
-           if(mrtab(i).gt.mtot) exit    ! Use this to deduce radius
-           i=i+1
+        ! Binary search for bracketing index
+        lo = 1
+        hi = nrbin
+        do while (hi - lo > 1)
+           mid = (lo + hi) / 2
+           if (mrtab(mid) <= mtot) then
+              lo = mid
+           else
+              hi = mid
+           end if
         end do
-        
-        r1=(mrtab(i)-mtot)/(mrtab(i)-mrtab(i-1))*rtab(i-1)&
-             &        +(mtot-mrtab(i-1))/(mrtab(i)-mrtab(i-1))*rtab(i)
-        
+        i = max(2,hi)
+
+        ! Guard against out-of-bounds
+        if (i .le. 1) then
+          r1 = rtab(1)
+          vcirc = vrot(1)
+          if (r1 .lt. r0) cycle
+          cycle
+        end if
+
+        if (i .gt. nrbin) then
+        ! mtot exceeded total disc mass - shouldn't happen, but handle gracefully
+           write(*,*) 'Warning: mtot out of range, mtot=', mtot, 'mrtab max=', mrtab(nrbin)
+           cycle
+        end if
+
+        ! Safe to interpolate now - i and i-1 are both valid
+        dm_bracket = mrtab(i) - mrtab(i-1)
+
+        if (dm_bracket .le. 0.0d0) then
+        ! Degenerate bracket - mrtab not monotonically increasing
+           write(*,*) 'Warning: degenerate mrtab bracket at i=', i
+           r1 = rtab(i)
+           vcirc = vrot(i)
+        else
+           frac = (mtot - mrtab(i-1)) / dm_bracket
+           frac = max(0.0d0, min(1.0d0, frac))   ! Clamp to [0,1]
+           r1    = (1.0d0 - frac) * rtab(i-1)   + frac * rtab(i)
+           vcirc = (1.0d0 - frac) * vrot(i-1)   + frac * vrot(i)
+        end if
+
         if(r1.lt.r0) cycle
 
         nn=nn+1                         ! Increment particle count by 1
         
-        vcirc=(mrtab(i)-mtot)/(mrtab(i)-mrtab(i-1))*vrot(i-1)&
-             &   +(mtot-mrtab(i-1))/(mrtab(i)-mrtab(i-1))*vrot(i)    ! Compute circular velocity
-        
         mvert=ran3(iseed)               ! Now work out corresponding height
+
         j=1
         
         do
@@ -598,9 +627,9 @@ program main
         z=ztab(j)
         if(1.-2*ran3(iseed).lt.0) z=-1*z            
         phi=2*pi*ran3(iseed)
-
-        pos(1,nn)=r1*cos(phi) 
-        pos(2,nn)=r1*sin(phi) 
+        
+        pos(1,nn)=r1*cos(phi)
+        pos(2,nn)=r1*sin(phi)
         pos(3,nn)=z
      
         vel(1,nn)=-vcirc*sin(atan2(pos(2,nn),pos(1,nn)))

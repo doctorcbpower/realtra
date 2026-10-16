@@ -2,18 +2,21 @@
 OPT += -DHERNQUIST_HALO
 #OPT += -DLOGARITHMIC_HALO
 #OPT += -DHERNQUIST_BULGE
-#OPT += -DSTELLAR_DISC_EXPONENTIAL
-#OPT += -DEXPONENTIAL_DISC
-#OPT += -DGalIC
+OPT += -DSTELLAR_DISC_EXPONENTIAL
+OPT += -DEXPONENTIAL_DISC
+OPT += -DGalIC
 OPT += -DHDF5
 #OPT += -DDEBUG
 
 OPTS = 
 
 ifeq (HDF5,$(findstring HDF5,$(OPT))) 
-FC = /opt/homebrew/bin/gfortran-13
-HDF5_INCL = -I/opt/homebrew/Cellar/hdf5/1.14.1/include
-HDF5_LIBS  = -L/opt/homebrew/Cellar/hdf5/1.14.1/lib /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5hl_fortran.a /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5_hl.a /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5_fortran.a /opt/homebrew/Cellar/hdf5/1.14.1/lib/libhdf5.a -L/opt/homebrew/opt/libaec/lib -lsz -lz -ldl -lm 
+FC = /opt/homebrew/bin/gfortran-15
+HDF5_INCL = -I/opt/homebrew/Cellar/hdf5/2.1.1/include
+HDF5_LIBS  = -L/opt/homebrew/Cellar/hdf5/2.1.1/lib \
+	-lhdf5_hl_fortran -lhdf5_hl -lhdf5_fortran -lhdf5 \
+	-L/opt/homebrew/opt/libaec/lib -lsz -lz -ldl -lm
+#	/opt/homebrew/Cellar/hdf5/2.1.1/lib/libhdf5_hl_fortran.a /opt/homebrew/Cellar/hdf5/2.1.1/lib/libhdf5_hl.a /opt/homebrew/Cellar/hdf5/2.1.1/lib/libhdf5_fortran.a /opt/homebrew/Cellar/hdf5/2.1.1/lib/libhdf5.a -L/opt/homebrew/opt/libaec/lib -lsz -lz -ldl -lm
 else
 FC = gfortran-9 $(OPTS)
 HDF5_INCL= 
@@ -22,7 +25,7 @@ endif
 
 OPTS= $(OPT) 
 #OPTS += -ffpe-trap=zero,overflow,underflow
-OPTS += -g -C
+OPTS += -O3 -march=native -funroll-loops -ffast-math
 
 SRCS =  compute_background_potential.f90 mk_gas_disc.f90 merge_comps.f90 mk_gas_halo.f90 mk_nbody_components.f90
 SOBJ = $(SRCS:.f90=.o)

@@ -1,5 +1,7 @@
 # realtra
 
+![Realtra banner](./realtra_banner.jpg)
+
 Equilibrium initial conditions for galaxy simulations: a **gas disc**, a hot **gas halo** and spherical
 **N-body halo/bulge** components, built consistently in one dark-matter potential, stitched together
 into one or more **systems** (e.g. for a merger), and optionally converted to an **AREPO** initial condition with a

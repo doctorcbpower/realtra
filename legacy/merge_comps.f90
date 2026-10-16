@@ -270,7 +270,6 @@ program merge_comp
      end if
 #endif
      if(offset) then
-        if(i.ge.1) then
            do j=1,npfile(i)
               do m=1,3
                  pos0(m)=pos(m,j+l)
@@ -290,7 +289,6 @@ program merge_comp
                  vel(m,j+l)=vel(m,j+l)+dvel(m,i)
               end do
            end do
-        end if
      end if
      l=l+npfile(i)
 
@@ -336,12 +334,12 @@ program merge_comp
            do j=l+1,l+np(i)
               m=m+1
               do n=1,3
-                 pos(m,n)=pos(j,n)
-                 vel(m,n)=vel(j,n)
+                 pos(n,m)=pos(n,j)
+                 vel(n,m)=vel(n,j)
               end do
               mass(m)=mass(j)
               id(m)=id(j)
-              ug(m)=ug(j)
+              if (ngas.gt.0 .and. i.eq.1) ug(m) = ug(j)
            end do
         end if
         l=l+np(i)
@@ -378,10 +376,10 @@ program merge_comp
         i=i+1
      end do
      
-     j=i-1
+     j=max(1, i-1)
      r_taper=sqrt(r2(indx(j)))
      
-     k=187619
+     k=-187619
      n=0
      do i=1,npart
         l=indx(i)
@@ -399,15 +397,11 @@ program merge_comp
   end if
 
   if(reduce_stellar_mass) then
-     
-     i=1
      j=0
      k=0
-     do
-        if(i.ge.type_star+1) exit
+     do i=1,type_star
         j=k+1
         k=j+np(i)
-        i=i+1
      end do
 
      do i=j,k
