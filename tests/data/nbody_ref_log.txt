@@ -1,0 +1,27 @@
+ Virial radius [kpc/h]:   162.62235170749221     
+ Scale radius [kpc/h]:   16.262235170749221     
+ Total mass [1e10 Msol/h]:   100.01455062109926     
+ Characteristic potential :   5.4222476460864177     
+ Characteristic density :  -2.9055878581307972     
+ Circular speed at virial radius [km/s] :   162.58940025258275     
+
+ Tabulated gravitational potential
+ Computing distribution function...
+ Sampling the density profile...
+ Allocating memory for        28739  particles...
+ Total mass enclosed [1e10 Msol]:   143.69055792059771     
+ Generated halo with        28739  particles...
+ Number of particles inside virial radius:        19981
+ Centre of mass [kpc]:   0.43608003244587257       0.58289753023905944       -6.0309039222380997E-002
+ Centre of mass velocity [km/s]:  -0.50818255233712295       -8.2609830154385222E-002  -2.3812293618082951E-002
+ Velocity dispersion [km/s]:    111.19166271694752        112.76281221103282        111.35550379511233        193.59515980768563     
+ Radial velocity (dispersion) [km/s]:  -0.52915384668515475        111.98311611375435     
+ np           0       28739           0           0           0           0
+ Writing GADGET HDF5 file to nfw_halo.gdt.hdf5
+           1           0
+           2       28739
+           3           0
+           4           0
+           5           0
+           6           0
+ Finished writing output
