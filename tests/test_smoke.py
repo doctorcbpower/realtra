@@ -240,3 +240,29 @@ def test_examples_run(script, writes, types, tmp_path):
     assert "nan" not in r.stdout.lower()
     if writes:
         check_ic(out, types, boxed=script in ("04_background_grid.py", "05_stitch_systems.py"))
+
+
+# ------------------------------------------------------------------ packaging metadata
+def test_pyproject_is_consistent():
+    """Version, dependencies and the console script in pyproject.toml match the code."""
+    import importlib
+
+    import galaxy_components
+    meta = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    proj = meta["project"]
+    assert proj["name"] == "galaxy-components" and "version" in proj["dynamic"]
+    assert meta["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "galaxy_components.__version__"
+    assert isinstance(galaxy_components.__version__, str) and galaxy_components.__version__.count(".") == 2
+    mod, func = proj["scripts"]["galaxy-components"].split(":")
+    assert callable(getattr(importlib.import_module(mod), func))
+    deps = {d.split(">")[0].split("=")[0] for d in proj["dependencies"]}
+    assert {"numpy", "scipy", "h5py", "f90nml"} <= deps
+    # every third-party module the package imports is declared
+    imported = set()
+    for f in (ROOT / "galaxy_components").glob("*.py"):
+        for line in f.read_text().splitlines():
+            line = line.strip()
+            if line.startswith(("import ", "from ")) and not line.startswith("from ."):
+                imported.add(line.split()[1].split(".")[0])
+    third_party = imported - set(sys.stdlib_module_names) - {"galaxy_components"}
+    assert third_party <= deps, f"undeclared dependencies: {third_party - deps}"

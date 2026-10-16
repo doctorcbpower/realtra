@@ -9,9 +9,9 @@ The maintained implementation is the Python package [`galaxy_components/`](galax
 Fortran codes it grew out of are kept in [`legacy/`](legacy/) (with their own README).
 
 ```
-parameters.txt ──► disc     gas disc in hydrostatic equilibrium (analytic potential)   ┐
- (namelists)    ──► halo     hot gas halo, hydrostatic in the same dark halo            ├─► system ─► merge ─► IC file
-                ──► nbody    spherical isotropic halo/bulge, Eddington inversion        ┘   (compounded)  (orbit, overlap,
+params file ──► disc     gas disc in hydrostatic equilibrium (analytic potential)   ┐
+ (namelists)   ──► halo     hot gas halo, hydrostatic in the same dark halo            ├─► system ─► merge ─► IC file
+               ──► nbody    spherical isotropic halo/bulge, Eddington inversion        ┘   (compounded)  (orbit, overlap,
                                                                                                       background grid)
 ```
 
@@ -23,32 +23,37 @@ parameters.txt ──► disc     gas disc in hydrostatic equilibrium (analytic 
 
 ## Install
 
-Python ≥ 3.11 with `numpy` ≥ 2.0, `scipy` ≥ 1.12, `h5py`, `f90nml` (and `pytest` for the tests). The package is not pip-packaged yet:
-run everything from the repository root.
+Python ≥ 3.11. From a clone of this repository:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install numpy scipy h5py f90nml pytest
-.venv/bin/python -m pytest -q                       # 48 tests, ~20 s
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[test]"        # numpy>=2, scipy>=1.12, h5py, f90nml (+ pytest); editable, so edits take effect
+pytest -q                       # 49 tests, ~20 s
+galaxy-components --help        # console script (also: python -m galaxy_components ...)
 ```
+`pip install .` (non-editable) works too, and `pip wheel .` builds a wheel containing only the package. After installing, the scripts in
+[`examples/`](examples/) run from anywhere (without installing, run them from the repository root with `PYTHONPATH=.`).
+
 Units throughout: **kpc, km/s, 10¹⁰ M☉** (so G = 4.3×10⁴ kpc (km/s)² / 10¹⁰ M☉).
 
 ## Quick start
 
 ```bash
 # a whole galaxy (gas disc + gas halo + N-body halo), with an AREPO background grid
-.venv/bin/python -m galaxy_components galaxy parameters.txt --outdir out --background-grid --halo-core 0.1 --zero-edge
+galaxy-components galaxy examples/galaxy_params.txt --outdir out --background-grid --halo-core 0.1 --zero-edge
 
 # a two-galaxy parabolic merger from a TOML description
-.venv/bin/python -m galaxy_components merge examples/merger.toml --outdir out
+galaxy-components merge examples/merger.toml --outdir out
 
 # or script the pieces yourself
-PYTHONPATH=. .venv/bin/python examples/02_gas_halo.py
+python examples/02_gas_halo.py
 ```
+[`examples/galaxy_params.txt`](examples/galaxy_params.txt) is a ready-made parameter file for a 10¹² M☉ galaxy.
 
 ## Parameter file
 
-The Fortran-style namelist file [`parameters.txt`](parameters.txt) is read unchanged (the Fortran programs and the
-Python package share it). Groups and the fields used:
+A Fortran-style namelist file (see [`examples/galaxy_params.txt`](examples/galaxy_params.txt)) is read unchanged: the same file format
+is used by the legacy Fortran programs. Groups and the fields used:
 
 | group | fields | meaning |
 |---|---|---|
@@ -69,7 +74,7 @@ floor, below), `halo_zero_edge` (zero-pressure edge, below), `nrbin`/`nzbin` (ga
 
 ## Commands
 
-`python -m galaxy_components <command> parameters.txt [--outdir DIR] [--seed N]`
+`galaxy-components <command> PARAMS [--outdir DIR] [--seed N]` (or `python -m galaxy_components ...`)
 
 | command | builds | notable options |
 |---|---|---|
@@ -176,7 +181,7 @@ overlap. Choose `r_init` larger than the sum of the gas extents (`rtrunc·r200` 
 ## Use the modules directly
 
 The package is a set of independent modules, so any piece can be reused on its own. Self-contained, runnable scripts are in
-[`examples/`](examples/) (run from the repository root with `PYTHONPATH=.`); they use
+[`examples/`](examples/) (they need the package installed, or `PYTHONPATH=.` from the repository root); they use
 `galaxy_components.presets.example_params()` so no parameter file is needed.
 
 | script | shows |
@@ -218,8 +223,8 @@ merge.write_merged("merger.hdf5", species, box)
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q              # everything, ~20 s
-.venv/bin/python -m pytest -q -m smoke     # end-to-end runs of every command and example, ~13 s
+pytest -q              # everything, ~20 s
+pytest -q -m smoke     # end-to-end runs of every command and example, ~13 s
 ```
 The physics tests check against analytic results: the exponential-disc potential against the Freeman closed form, the vertical solver
 against the isothermal sech² sheet, hydrostatic balance of every halo variant, conservation in the background grid, the Kepler orbit's

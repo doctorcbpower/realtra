@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "galaxy-components"
+dynamic = ["version"]
+description = "Equilibrium galaxy initial conditions (gas disc, hot gas halo, N-body halo), merger set-up and AREPO background grids"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Chris Power" }]
+keywords = ["astrophysics", "initial conditions", "galaxies", "AREPO", "GADGET"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.12",
+    "h5py",
+    "f90nml",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+galaxy-components = "galaxy_components.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["galaxy_components*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "galaxy_components.__version__" }
