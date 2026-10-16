@@ -62,7 +62,9 @@ def check_ic(path, expect_types=None, boxed=False):
                 assert np.all(np.isfinite(g[name][:])), f"{key}/{name} has non-finite values"
             if "Masses" in g:
                 m = g["Masses"][:]
-                assert m.shape == (n,) and np.all(m > 0) and np.all(np.isfinite(m))
+                assert m.shape == (n,) and np.all(np.isfinite(m)) and m.sum() > 0
+                # zero-mass gas cells are the point of the AREPO background grid; nothing else may be massless
+                assert np.all(m >= 0) if (t == 0 and boxed) else np.all(m > 0)
             else:
                 assert masstab[t] > 0, f"{key}: no Masses block and no MassTable entry"
             if t == 0:
@@ -215,3 +217,26 @@ def test_check_ic_is_not_vacuous(tmp_path):
     write_hdf5(tmp_path / "gas.hdf5", gas_no_u, verbose=False)   # gas without InternalEnergy
     with pytest.raises(AssertionError):
         check_ic(tmp_path / "gas.hdf5")
+
+
+# ------------------------------------------------------------------ the standalone module examples
+EXAMPLES = [("01_gas_disc.py", True, {0}), ("02_gas_halo.py", False, None),
+            ("03_nbody_halo.py", False, None), ("04_background_grid.py", True, {0}),
+            ("05_stitch_systems.py", True, {0, 1, 2}), ("06_custom_potential.py", False, None)]
+
+
+@pytest.mark.parametrize("script,writes,types", EXAMPLES)
+def test_examples_run(script, writes, types, tmp_path):
+    """Every script in examples/ runs from the repo root and (where it writes) writes a valid IC."""
+    import os
+    cmd = [sys.executable, str(ROOT / "examples" / script)]
+    out = tmp_path / "out.hdf5"
+    if writes:
+        cmd += ["--out", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT,
+                       env={**os.environ, "PYTHONPATH": str(ROOT)})
+    assert r.returncode == 0, r.stderr[-800:]
+    assert r.stdout.strip(), "example printed nothing"
+    assert "nan" not in r.stdout.lower()
+    if writes:
+        check_ic(out, types, boxed=script in ("04_background_grid.py", "05_stitch_systems.py"))

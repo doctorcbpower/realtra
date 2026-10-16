@@ -1,300 +1,259 @@
 # build_galaxy_components
 
-This repository contains a set of four codes that have been developed by [A/Prof Chris Power (ICRAR/UWA)](https://www.icrar.org/people/cpower/). The purpose of each is highlighted below:
+Equilibrium initial conditions for galaxy simulations: a **gas disc**, a hot **gas halo** and spherical
+**N-body halo/bulge** components, built consistently in one dark-matter potential, stitched together
+into one or more **systems** (e.g. for a merger), and optionally converted to an **AREPO** initial condition with a
+background grid. Developed by [A/Prof Chris Power (ICRAR/UWA)](https://www.icrar.org/people/cpower/).
 
-* [`mk_gas_disc.exe`](mk_gas_disc.f90) - this code is used to compute the hydrostatic equilibrium gas distribution of an isothermal disc embedded within a gravitational potential, usually a composite of a stellar bulge, stellar disc, and dark matter halo. 
-
-* [`mk_gas_halo.exe`](mk_gas_halo.f90) - this code is used to compute the hydrostatic equilibrium gas distribution in a gaseous halo, based on the formalism set out in Komatsu & Seljak 2001.
-
-* [`mk_nbody_comps.exe`](mk_nbody_comps.f90) - this code is used to generate equilibrium n-body components of galaxies with arbitary numbers of components. (...)
-
-* [`merge_comps.exe`](merge_comps.f90) - this code is used to merge gas components with N-body components.
-
-> **Layout.** The original Fortran codes (sources and `makefile`) now live in [`legacy/`](legacy/); build and run
-> them from there, e.g. `cd legacy && make`, then `./mk_gas_disc.exe ../parameters.txt`. The Python package
-> [`galaxy_components/`](galaxy_components/) is the maintained implementation (see "Python port" below).
-> `parameters.txt` stays at the top level because both read it.
-
-## Usage
-
-### Compilation
-
-To use these codes, they first need to be compiled. Begin by modifying the makefile included in the repository. 
-```
-> vim makefile
-```
-There are a number of available options in the makefile that can be activated based on the user's requirements. The first of these catagorise the type of halo potential within which you would like to generate your galaxy componets:
-```
-#OPT += -DNFW_HALO                  % adding the potential of an analytic NFW halo
-#OPT += -DHERNQUIST_HALO            % adding the potential of a Hernquist halo 
-#OPT += -DLOGARITHMIC_HALO          % adding the potential of a logarithmic halo 
-```
-Only one of these halo options can be activiated at a time. 
-```
-#OPT += -DHERNQUIST_BULGE           % adding the potential of a Hernquist bulge
-#OPT += -DSTELLAR_DISC_EXPONENTIAL  % adding the potential of an exponential stellar disk
-```
-These flags specify the potentials of other components in the N-body model that can optionally be included. Neither, either or both of these options can be activated at a time.
-```
-#OPT += -DEXPONENTIAL_DISC          % adding the potential of an exponential gas disk
-```
-This specifies the potential for the gas disc to be placed within the N-body components. This flag needs to be activated when running `mk_gas_disc.exe`.
-```
-#OPT += -DGalIC                     % turn on GalIC constants
-```
-This flag needs to be activated in order to use constants and definitions that are consistent with the GalIC N-body initial conditions generation code [(Yurin & Springel, 2014)](https://ui.adsabs.harvard.edu/abs/2014MNRAS.444...62Y/abstract). For example, in the case in which you would like to merge a GalIC N-body simulation and gas components generated with this code. 
-```
-#OPT += -DHDF5                      % use HDF5
-```
-This flag needs to be activated to read and generate HDF5 outputs. If turned on, it is necessary to specify the paths of the include and lib folders of your HDF5 installation within the makefile. 
-
-Once you have modified the makefile for your system, the code can be compiled and the executable generated:
-```
-> make
-```
-This will compile all executable programs. If you would like to modify the executable for alternative combinations of components, run 
-```
-> make clean
-```
-and then recompile the executables with the modified makefile. 
-
-
-### Inputs
-```
-> vim parameters.txt 
-```
-To specify the details of the potential within which the components are built, first modify the input parameters. The parameter.txt file contains a series of namelists; the format is as follows: 
-```
-&HALO
-m200=1.e0               % Virial mass, M200, in units of 1e10 Msol
-c200=10                 % NFW concentration
-/
-
-&DISC
-mdisc=0.035             % Disc mass as a fraction of M200
-fdisc=0.2               % Disc scale length as a fraction of halo scale radius
-mstar=0.9               % The fraction of the disc mass that is contained in the stellar component
-sigma0=0.0              % ?
-fhole=0.0               % ?
-fdref=-0.0              % ?
-/
-
-&BULGE
-mbulge=0.0              % Bulge mass as a fraction of M200
-fbulge=0.0              % Bulge scale radius as a fraction of the halo scale radius
-/
-
-&GAS_DISC
-temp=1.d4               % Temperature of the gas disc in K
-ndisc=200000            % Number of particles in the gas disc  
-/
-
-&GAS_HALO
-fbaryon=0.16            % Baryon fraction, OmegaB/Omega0
-nhalo=20000             % Number of particles in the gas halo
-lambda_b=0.0            % ?
-v_radial=0.0            % ?
-/
-
-&BLACK_HOLE
-mbh=.0e-5               % Black hole mass as a fraction of M200
-/
-
-&NBODY      
-ncomp=0                 % ?
-/
-
-&OUTPUT
-disc_file='gas_disc.gdt' % Output gas disc Gadget file
-halo_file='gas_halo.gdt' % Output gas halo Gadget file
-snap_format=1            % Format of output file (1 - Gadget binary snap1, 2 - Gadget binary snap2, 3 - HDF5)
-/
-
-&MISC
-glass_file='./glass_32.gdt' % Input glass file
-ispoisson=.false            % Sample from a Poisson distribution?
-/
-```
-For the `&MISC` options, only one of these options should be specified. To generate your equilibrium gas component, either:
-* Sample your particles from a Poisson distribution, using the ran3() rountine from NR in F77.
-or
-* By replicating a cube of glass and deforming it to generate the required mass distribution. A glass file is provided in this repository for this use. 
-
-### Running the codes
-
-Each code for generating components accepts the parameters from the input file parameters.txt and can be operated in a similar manner:
-```
-> ./mk_gas_disc.exe ./parameters.txt    % to build a gas disc within the potential specified 
-
-> ./mk_gas_halo.exe ./parameters.txt    % to build a gas halo within the potential specified
-
-> ./mk_nbody_comps.exe ./parameters.txt % to build an N-body model with components specified 
-```
-To merge an N-body model with a gas component:
-```
-> ./merge_comps.exe -in ./gas_component -in ./Nbody_components -out ./merged_output
-```
-It  is necessary to list the gas component file as the first in the list. If the input/output files are HDF5 format, this needs to be specified by:
-```
-> ./merge_comps.exe -in_hdf5 ./gas_component.hdf5 -in_hdf5 ./Nbody_components.hdf5 -out_hdf5 ./merged_output.hdf5
-```
-These flags can be modified for Gadget inputs (-in_snap1 or -in_snap2) or Swift inputs (-in_swift). Similarly, outputs can be written in any of these formats (-out_snap1, -out_snap2 or -out_swift).
-
-## Notes
-
-The mean molecular weight is assumed to 4/(1+3*0.76)~1.21 appropriate for a gas disc; 
-for the hot halo, it's assumed to be ionized.
-
-At the moment, I assume the N-body component is set up with GalIC - so potentials and 
-parameters are calculated to be consistent with this.
-
-
-## Python port (`galaxy_components/`)
-
-`mk_gas_disc` and `mk_nbody_comps` have a Python port that reads the same `parameters.txt`
-(requires numpy, scipy, h5py, f90nml; tests with `pytest`):
-```
-> python -m galaxy_components disc   parameters.txt --outdir out
-> python -m galaxy_components nbody  parameters.txt --outdir out
-```
-The makefile `-D` flags become an optional `&MODEL` namelist group (ignored by the Fortran
-programs): `halo_type='hernquist'|'nfw'|'logarithmic'`, `galic=.true.`. Output is GADGET HDF5 only;
-glass-file sampling (`ispoisson=.false.`) is not ported yet.
-
-### What the N-body path does and does not model
-
-The N-body sampler (`nbody`) is the default and only N-body path. It builds **spherical, isotropic
-halo and bulge components** by Eddington inversion, each in the potential of the *N-body
-components alone* (`&NBODY`: `ncomp`, `form_comp`, `fmass_comp`, ...). A bulge is simply another
-component, e.g. `form_comp(2)='hernquist'`.
-
-* **The stellar disc is not sampled.** `nbody` produces no disc particles, and the disc's gravity is
-  **not** included in the halo/bulge potential, so these components are in equilibrium only in
-  isolation. Adding a disc perturbs them; expect adiabatic response/relaxation when evolved.
-  Use it where that is acceptable (e.g. a small disc-to-halo mass ratio), or provide the stellar
-  disc and a consistent halo from a made-to-measure code such as GalIC.
-* **The gas disc is a test-particle-like add-on.** `disc` solves hydrostatic equilibrium for the gas
-  in the analytic halo + bulge + stellar-disc potential (the gas's own gravity enters only through
-  the local vertical term, and its radial pull through the Freeman formula). It does not feed back
-  on the halo, and the halo is not re-equilibrated to the disc.
-* True disc + halo equilibrium (made-to-measure or Schwarzschild-type) is out of scope here.
-
-### Gas halo, compounding with the disc, and the AREPO background grid
+The maintained implementation is the Python package [`galaxy_components/`](galaxy_components/). The original
+Fortran codes it grew out of are kept in [`legacy/`](legacy/) (with their own README).
 
 ```
-> python -m galaxy_components halo   parameters.txt --outdir out   # gas halo only (mk_gas_halo)
-> python -m galaxy_components galaxy parameters.txt --outdir out --background-grid   # everything -> AREPO IC
+parameters.txt ──► disc     gas disc in hydrostatic equilibrium (analytic potential)   ┐
+ (namelists)    ──► halo     hot gas halo, hydrostatic in the same dark halo            ├─► system ─► merge ─► IC file
+                ──► nbody    spherical isotropic halo/bulge, Eddington inversion        ┘   (compounded)  (orbit, overlap,
+                                                                                                      background grid)
 ```
 
-**The gas halo** is the Komatsu & Seljak (2001) polytropic hydrostatic solution in a *dark-matter-only*
-halo (`&GAS_HALO`: `fbaryon`, `nhalo`, `rtrunc`, `form`). Closed forms replace the Fortran quadratures;
-it reproduces the Fortran gamma, T0 and radial profiles. Two things differ by default:
-* `consistent` (default on, `--legacy` off): the Fortran builds the Hernquist gas halo with
-  `a = r200/c200` and mass `M200`, whereas the disc and N-body codes use the GalIC scale
-  `a = (r200/c200) sqrt(2 f(c))`. The gas halo therefore sat in a different potential from the disc.
-  The default now uses the same dark halo everywhere (for c=10 this changes gamma 1.185 -> 1.143 and
-  T0 3.8e6 -> 1.6e6 K).
-* The Fortran gives each halo particle a Gaussian velocity of sigma = sqrt(2u) per component (~ the
-  sound speed, ~250 km/s) on top of its thermal energy. This is kept by default; `--cold` removes it.
-  `lambda_b` (spin) is not applied in the Fortran (code commented out) and is ignored here too.
+## Contents
+[Install](#install) · [Quick start](#quick-start) · [Parameter file](#parameter-file) · [Commands](#commands) ·
+[What each component models](#what-each-component-models) · [Merging systems](#merging-systems) ·
+[Use the modules directly](#use-the-modules-directly) · [Tests](#tests) · [Differences from the Fortran](#differences-from-the-fortran) ·
+[Limitations](#limitations) · [References](#references)
 
-**How the halo and disc compound.** The two gas components are computed independently, each assuming
-the other is absent, and `merge_comps` simply concatenates them. Where they overlap this double counts
-mass and ignores the pressure the hot halo exerts on the cold disc. `galaxy` instead (default) applies
-a pressure-balance criterion: the disc exists where `P_disc = rho_d cs^2 >= P_halo(r)`. The disc is cut
-at that height (rings whose midplane pressure is below the halo's vanish) and halo particles inside the
-disc region are removed; `--naive-merge` gives the old behaviour. This is only approximately an
-equilibrium: the halo ignores the disc's gravity and the disc ignores the halo's weight. With the
-default parameters the effect is large (a 10^4 K disc is overpressured by a cuspy 1.5x10^6 K halo beyond
-~1 R_d), which is a real property of those parameters rather than an artefact -- see the printed
-`disc_mass_after_truncation`.
+## Install
 
-**Background grid** (`--background-grid`) is a port of AREPO's `ADDBACKGROUNDGRID`
-(`src/add_backgroundgrid`): an oct-tree is built on the gas, a massless cell is placed at each leaf-node
-centre, and every particle's mass, energy and momentum are spread onto the cells within its smoothing
-length with the cubic-spline kernel (conserved exactly; the smoothing length is recomputed as the
-distance to the `--nngb`-th neighbour, since AREPO does not read one from the IC). The box is set to
-`--boxsize-factor` (default 5, clamped to AREPO's 2-15) times the gas extent, all species are shifted to
-the box centre, and `BoxSize` is written to the header. Cells are written as double precision with a
-`Masses` block. The AREPO values `BoxSize` and `ReferenceGasPartMass` are printed; AREPO's `MeanVolume`
-comes from its internal `GridSize`, which is not reproduced here.
+Python ≥ 3.11 with `numpy` ≥ 2.0, `scipy` ≥ 1.12, `h5py`, `f90nml` (and `pytest` for the tests). The package is not pip-packaged yet:
+run everything from the repository root.
 
-#### A halo that doesn't crush the disc: `--halo-core`
-
-The K&S halo is cuspy, so its central pressure is high. `--halo-core f` (or `halo_core=f` in a
-`&MODEL` group) keeps the same dark potential and the same gas mass inside r200 but adds a constant
-entropy floor, K(r) = K_KS(r) + f K_KS(r200) with K = P/rho^(5/3), and re-solves hydrostatic
-equilibrium (`gas_halo.add_entropy_core`; f = 0 is exactly K&S). Effect on the default parameters
-(disc of 0.40 x 10^10 Msol, R_d = 2.1 kpc, T_disc = 10^4 K):
-
-| f    | disc mass kept | disc outer radius | halo T(1 kpc) | halo n(1 kpc) |
-|------|----------------|-------------------|---------------|---------------|
-| 0    | 19 %           | 2.6 kpc           | 1.5e6 K       | 0.91 cm^-3    |
-| 0.03 | 46 %           | 4.5 kpc           | 2.6e6 K       | 0.10 cm^-3    |
-| 0.1  | 61 %           | 5.7 kpc           | 3.3e6 K       | 0.028 cm^-3   |
-| 0.3  | 72 %           | 6.6 kpc           | 4.2e6 K       | 0.008 cm^-3   |
-| 1    | 79 %           | 7.1 kpc           | 6.2e6 K       | 0.002 cm^-3   |
-
-The core helps a lot but saturates: beyond ~3 R_d the *disc's own* midplane pressure (an exponential,
-10^4 K gas) falls to ~10^3 K cm^-3, below that of any plausible hot halo at those radii, so some
-truncation of the outer disc is unavoidable for this disc/halo pairing. Other ways to keep more disc: a
-lower `fbaryon`, a hotter or more extended disc (`temp`, `fdisc`), or accepting an outer disc that is
-pressure-confined. Note that a core pushes gas outwards: for fixed M_gas(<r200) there is more mass
-between r200 and `rtrunc`*r200 (at f = 0.1 the sampled halo is ~1.6 x heavier), so reduce `rtrunc` if
-that matters.
-
-### Building systems and stitching them together (replaces `merge_comps`)
-
-The old workflow built gas disc, gas halo and N-body parts as separate files and glued them with
-`merge_comps.exe`. The Python workflow builds each **system** (one galaxy: gas disc + gas halo +
-N-body components, already compounded by pressure balance) and then stitches any number of systems into one file.
-
+```bash
+python3 -m venv .venv && .venv/bin/pip install numpy scipy h5py f90nml pytest
+.venv/bin/python -m pytest -q                       # 48 tests, ~20 s
 ```
-> python -m galaxy_components system  galaxy.txt --outdir out --name gal1.hdf5   # a single system
-> python -m galaxy_components merge   examples/merger.toml --outdir out          # stitch several
+Units throughout: **kpc, km/s, 10¹⁰ M☉** (so G = 4.3×10⁴ kpc (km/s)² / 10¹⁰ M☉).
+
+## Quick start
+
+```bash
+# a whole galaxy (gas disc + gas halo + N-body halo), with an AREPO background grid
+.venv/bin/python -m galaxy_components galaxy parameters.txt --outdir out --background-grid --halo-core 0.1 --zero-edge
+
+# a two-galaxy parabolic merger from a TOML description
+.venv/bin/python -m galaxy_components merge examples/merger.toml --outdir out
+
+# or script the pieces yourself
+PYTHONPATH=. .venv/bin/python examples/02_gas_halo.py
 ```
-`merge` reads a TOML file (see `examples/merger.toml`). Each `[[system]]` is either built from a
-parameter file (`params`, with optional `[system.overrides]` of any `&...` parameter and
-`[system.options]` such as `halo_core`) or loaded from an existing GADGET HDF5 file (`file`, including
-files from the Fortran codes). Per system you can set `position`, `velocity`, `euler = [phi, theta, psi]`
-(degrees, z-x-z), `type_map = {1 = 2}` (keep a system's halo as a separate PartType) and the old
-`merge_comps` tidying options: `taper_mass`, `reduce_stellar_mass = {type, fraction}`, `excise_types`.
-An `[orbit]` table (`systems`, `r_init`, `r_peri`, `ecc`) sets the positions and velocities of two systems
-on a Kepler orbit in the centre-of-mass frame. `[background_grid]` builds **one** AREPO background grid on
-the combined gas (so all systems share one tree and one box), and everything is shifted into the box.
 
-**Gas interfaces between systems.** Where the gas of two systems overlaps, `merge` applies a pairwise
-pressure-balance rule (default; `[gas_overlap] mode = "pressure"`, `k = 32`) in the spirit of Donnert (2013),
-who resamples the overlapping gas rather than adding it. Each gas particle's pressure
-P = (gamma-1) rho u is estimated from its k nearest neighbours; a particle is removed if any other system's
-gas would have a higher pressure at that point. So at an interface the higher-pressure gas wins and the
-other is cut away, rather than the two being superposed (which double counts mass and leaves the boundary
-out of pressure balance). It needs only particles, so it works for systems loaded from files; the cost is a
-noisy estimate and a sharp cut. Set `mode = "none"` for plain superposition (a warning is printed if the gas
-extents overlap). In the 400 kpc example only 0.2% of the secondary's gas is removed.
+## Parameter file
 
-Remaining caveats: systems are not re-equilibrated (each N-body halo is sampled in isolation; the cut
-interface is in pressure balance only to the accuracy of the k-neighbour estimate), and an interface cut
-this way is not smoothed, so expect a short transient. Choose `r_init` larger than the sum of the gas
-extents (`rtrunc * r200` each) for the cleanest start.
+The Fortran-style namelist file [`parameters.txt`](parameters.txt) is read unchanged (the Fortran programs and the
+Python package share it). Groups and the fields used:
 
-#### Hydrostatic to a finite edge with zero pressure: `--zero-edge`
+| group | fields | meaning |
+|---|---|---|
+| `&HALO` | `m200`, `v200`, `c200`, `qflat`, `rcore` | virial mass [10¹⁰ M☉] (or `v200`), concentration; log-halo flattening/core |
+| `&DISC` | `mdisc`, `mstar`, `fdisc`, `fhole`, `fdref`, `sigma0` | disc mass (>0: fraction of M200; ≤0: absolute), stellar fraction, scale length as a fraction of the halo scale, inner hole, … |
+| `&BULGE` | `mbulge`, `fbulge` | Hernquist bulge mass and scale |
+| `&GAS_DISC` | `temp`, `ndisc` | gas-disc temperature [K], particle count |
+| `&GAS_HALO` | `fbaryon`, `nhalo`, `rtrunc`, `form`, `v_radial` | baryon fraction, particles inside r200, sampling edge / r200, `'nfw'` or `'hernquist'` |
+| `&BLACK_HOLE` | `mbh` | central black-hole mass |
+| `&NBODY` | `ncomp`, `npart_comp`, `fmass_comp`, `form_comp`, `rscale_comp`, `rtrunc_comp`, `istaper` | N-body components (`'nfw'`, `'hernquist'`, `'burkert'`) |
+| `&OUTPUT` | `disc_file`, `halo_file`, `nbody_file`, `snap_format` | output names; **only HDF5 (`snap_format=3`) is written** |
+| `&MISC` | `ispoisson` | must be `.true.` (glass-file sampling is not ported) |
+| `&MODEL` | `halo_type`, `galic`, `halo_core`, `halo_zero_edge`, `nrbin`, `nzbin`, `snap_z` | **Python only** (ignored by the Fortran): replaces the Fortran `-D` compile flags and holds new options |
 
-Following Donnert (2013), `--zero-edge` (or `halo_zero_edge=.true.` in `&MODEL`) solves the halo gas
-hydrostatically only out to R_max = `rtrunc` x r200 and imposes P(R_max) = 0 there, so the density and
-temperature fall smoothly to zero at the edge instead of the gas ending in a pressure cliff. It combines
-with `--halo-core`. With the edge pressure fixed, the gas mass inside r200 is matched by an overall entropy
-scale instead; the sampled halo then holds ~1.01-1.03 x f_baryon M200 instead of 1.06-1.7 x (the free-edge
-solution leaves extra mass between r200 and `rtrunc`). Pressure falls steeply near the edge
-(P ~ (R_max - r)^2.5), so the effective gas edge is at ~0.9 R_max. Effect on the default disc:
+`&MODEL`: `halo_type = 'hernquist' | 'nfw' | 'logarithmic'` (default `'hernquist'`), `galic = .true.` (GalIC
+conventions: the Hernquist halo has total mass `mhalo` and scale `a = r200/c200 · √(2 f(c))`), `halo_core` (entropy
+floor, below), `halo_zero_edge` (zero-pressure edge, below), `nrbin`/`nzbin` (gas-disc mesh, default 150 × 500).
 
-| halo                | disc mass kept | disc outer radius | particles for nhalo = 20000 |
-|---------------------|----------------|-------------------|-----------------------------|
-| K&S, free edge      | 19 %           | 2.6 kpc           | 21241                       |
-| K&S, zero edge      | 17 %           | 2.6 kpc           | 20206                       |
-| core 0.1, free edge | 61 %           | 5.7 kpc           | 33775                       |
-| core 0.1, zero edge | 46 %           | 4.5 kpc           | 20588                       |
+## Commands
 
-The zero edge does not help the disc by itself (the edge pressure is irrelevant at a few kpc); it removes
-the heavy low-density envelope, and with a core it moves mass back inside r200, which raises the central
-pressure a little (hence 46 % rather than 61 %).
+`python -m galaxy_components <command> parameters.txt [--outdir DIR] [--seed N]`
+
+| command | builds | notable options |
+|---|---|---|
+| `disc` | gas disc (+ `vrot_components.txt`, `disc_parameters.txt`) | |
+| `nbody` | spherical N-body components (+ `distribution_function.txt`) | `--fix-legacy` |
+| `halo` | gas halo | `--halo-core F`, `--zero-edge`, `--legacy`, `--cold` |
+| `galaxy` / `system` | disc + gas halo + N-body in one file | all `halo` options, plus `--naive-merge`, `--no-nbody`, `--background-grid`, `--boxsize-factor`, `--nngb`, `--name` |
+| `merge CONFIG.toml` | several systems stitched into one file | see [Merging systems](#merging-systems) |
+
+## What each component models
+
+**Gas disc** (`disc`). Isothermal gas in hydrostatic equilibrium in the analytic potential of the halo, optional bulge
+and stellar exponential disc. At each radius the vertical structure solves
+ρ(z) = ρ₀ exp(−(Φ_bg(R,z) − Φ_bg(R,0) + Φ_g(z))/c_s²), Φ_g'' = 4πGρ, with ρ₀ set so the surface density follows the imposed
+exponential. The gas's own gravity enters only through that local vertical term and, for the rotation curve, the Freeman
+formula; the rotation curve is v_rot² = v_c²(background) + v_c²(gas) + c_s² dlnρ_mid/dlnR. All rings are solved together
+with a vectorised RK4 (≈ 2 s for the default mesh). The stellar-disc potential is a Hankel-transform integral.
+
+**N-body components** (`nbody`). Spherical, isotropic, multi-component Eddington inversion. It sees only the N-body
+components themselves: **a disc is neither sampled nor included in its potential**, so the halo is in equilibrium only in
+isolation and is perturbed when a disc is added (a true disc + halo equilibrium needs a made-to-measure code such as GalIC).
+The gas disc is a perturbation on it, not a self-consistent partner.
+
+**Gas halo** (`halo`). Komatsu & Seljak (2001) polytropic gas, hydrostatic in the dark halo, with Γ matched at r200. With the
+default `consistent` mode the gas halo sits in the **same dark halo the disc and N-body parts use**; `--legacy` reproduces the
+Fortran (which used a different scale length and mass normalisation). Two options change the halo so it does not overwhelm
+the disc:
+* `--halo-core F` adds a constant entropy floor K(r) = K_KS(r) + F·K_KS(r200) (K = P/ρ^{5/3}) and re-solves hydrostatic
+  equilibrium keeping the gas mass inside r200 (F = 0 is exactly K&S). F = 0.1 raises the fraction of the default disc surviving
+  pressure confinement from 19 % to 61 %; beyond ~3 R_d some truncation of a 10⁴ K disc is unavoidable.
+* `--zero-edge` (after Donnert 2013) makes the gas hydrostatic only out to R_max = `rtrunc`·r200 with **P(R_max) = 0**, so the
+  density and temperature fall smoothly to zero rather than ending in a pressure cliff. The mass inside r200 is matched by an
+  overall entropy scale; the sampled halo then holds ≈ 1.01–1.03 × f_b M200 instead of up to 1.7×.
+
+| halo (default disc) | disc mass kept | disc outer radius |
+|---|---|---|
+| K&S, free edge | 19 % | 2.6 kpc |
+| K&S, zero edge | 17 % | 2.6 kpc |
+| core 0.1, free edge | 61 % | 5.7 kpc |
+| core 0.1, zero edge | 46 % | 4.5 kpc |
+
+The Fortran also gives each halo particle a Gaussian velocity with σ = √(2u) per component (about the sound speed, ~250 km/s);
+this is kept by default, `--cold` removes it. The spin parameter `lambda_b` is not applied by the Fortran and is ignored here.
+
+**Compounding the disc and the halo.** Built independently, the two gas components overlap and the cold disc ignores the pressure of the
+hot halo. `galaxy`/`system` therefore apply a pressure-balance rule: the disc exists where its pressure ρ_d c_s² is at least the
+halo's P_h(r). The disc is cut at that height (rings whose midplane pressure is below the halo's vanish) and halo particles
+inside the disc region are removed. `--naive-merge` just concatenates, as `merge_comps` did. This is approximate: the halo ignores
+the disc's gravity and the disc ignores the halo's weight.
+
+**AREPO background grid** (`--background-grid`; port of AREPO's `ADDBACKGROUNDGRID`, `src/add_backgroundgrid`). An oct-tree is
+built on the gas; a massless cell is placed at each leaf-node centre; every particle's mass, thermal energy and momentum are spread
+onto the cells within its smoothing length with the cubic-spline kernel (conserved exactly; the smoothing length is the distance to
+the `--nngb`-th neighbour, since AREPO recomputes it). The box is `--boxsize-factor` (default 5, clamped to AREPO's 2–15) times the
+gas extent, all species are shifted to the box centre, `BoxSize` is written to the header, and the file is double precision with a
+`Masses` block (zero-mass cells are expected). Printed AREPO values: `BoxSize`, `ReferenceGasPartMass`; AREPO's `MeanVolume` comes
+from its internal `GridSize`, which is not reproduced.
+
+## Merging systems
+
+A **system** is one galaxy (gas disc + gas halo + N-body parts, already compounded). `merge` reads a TOML file
+([`examples/merger.toml`](examples/merger.toml)) listing any number of systems, each either **built** from a parameter file or
+**loaded** from an existing GADGET HDF5 file (including Fortran output), and writes one stitched file.
+
+```toml
+output = "merger_ic.hdf5"
+seed = 7
+[background_grid]            # one grid on the combined gas
+enabled = true
+[gas_overlap]                # default mode = "pressure"
+mode = "pressure"            # or "none"
+k = 32
+[orbit]                      # positions/velocities of systems 0 and 1 from a Kepler orbit (x-y plane, CM frame)
+systems = [0, 1]
+r_init = 700.0
+r_peri = 30.0
+ecc = 1.0
+[[system]]
+name = "primary"
+params = "galaxy_params.txt"          # build ...
+[system.options]                      # kwargs of build_system (halo_core, zero_edge, cold_halo, ...)
+halo_core = 0.1
+[system.overrides]                    # any Params field
+ndisc = 40000
+[[system]]
+name = "secondary"
+file = "other.hdf5"                   # ... or load
+euler = [0, 60, 0]                    # z-x-z Euler angles [deg]
+position = [300, 0, 0]                # (unless an [orbit] sets them)
+velocity = [-50, 0, 0]
+type_map = { 1 = 2 }                  # keep this system's halo as PartType2
+taper_mass = 0.99                     # old merge_comps options: taper_mass,
+reduce_stellar_mass = { type = 2, fraction = 0.5 }   #   reduce_stellar_mass,
+excise_types = [3]                                   #   excise_types
+```
+
+**Gas interfaces between systems.** Where the gas of two systems overlaps, `merge` applies a pairwise pressure-balance rule in the
+spirit of Donnert (2013), who resamples the overlapping gas rather than adding it: each gas particle's pressure
+P = (γ−1)ρu is estimated from its `k` nearest neighbours, and a particle is removed if any other system's gas would have a higher
+pressure at that point, so the higher-pressure gas wins. It needs only particles, so it works for systems loaded from files; the
+price is a noisy estimate and a sharp cut. With `mode = "none"` the gas is superposed and a warning is printed if the gas extents
+overlap. Choose `r_init` larger than the sum of the gas extents (`rtrunc·r200` each) for the cleanest start.
+
+## Use the modules directly
+
+The package is a set of independent modules, so any piece can be reused on its own. Self-contained, runnable scripts are in
+[`examples/`](examples/) (run from the repository root with `PYTHONPATH=.`); they use
+`galaxy_components.presets.example_params()` so no parameter file is needed.
+
+| script | shows |
+|---|---|
+| [`01_gas_disc.py`](examples/01_gas_disc.py) | potential → vertical structure → rotation curve → particles |
+| [`02_gas_halo.py`](examples/02_gas_halo.py) | K&S halo vs entropy core vs zero-pressure edge |
+| [`03_nbody_halo.py`](examples/03_nbody_halo.py) | spherical N-body halo and a check against the model mass profile |
+| [`04_background_grid.py`](examples/04_background_grid.py) | AREPO background grid for **any** gas particles (`--input` an HDF5 file) |
+| [`05_stitch_systems.py`](examples/05_stitch_systems.py) | two galaxies, Kepler orbit, interface resolution, stitching |
+| [`06_custom_potential.py`](examples/06_custom_potential.py) | compose potentials; reuse the hydrostatic solver for your own Φ(R,z) |
+
+```python
+import numpy as np
+from galaxy_components.presets import example_params
+from galaxy_components.system import build_system
+from galaxy_components import merge
+
+a = build_system(example_params(ndisc=20000), "a", halo_core=0.1)                  # one galaxy in memory
+b = build_system(example_params(m200=30.0, ndisc=8000), "b", halo_core=0.1)
+x1, v1, x2, v2 = merge.orbit_two_body(a.meta["m200"], b.meta["m200"], r_init=700, r_peri=30)
+placed, _ = merge.resolve_gas_overlap([merge.place(a, x1, v1), merge.place(b, x2, v2, euler=(0, 60, 0))])
+species, box = merge.finalise(merge.stitch(placed), background_grid=True)           # one background grid
+merge.write_merged("merger.hdf5", species, box)
+```
+
+| module | contents |
+|---|---|
+| `potentials` | `Hernquist`, `NFW`, `LogarithmicHalo`, `ExponentialDisc` with `phi(R,z)`, `vc2(R)` |
+| `model` | `build_model(params)` – derived radii/masses and the background components |
+| `gas_disc` | `build_gas_disc`, `solve_rings` (any Φ), `sample_particles` |
+| `gas_halo` | `build_gas_halo`, `add_entropy_core(..., zero_edge=)`, `sample_gas_halo` |
+| `nbody` | `build_nbody`, `sample_nbody` |
+| `compound` | `truncate_disc`, `excise_halo` (disc ↔ halo pressure balance) |
+| `backgroundgrid` | `add_background_grid` (works on any particle arrays) |
+| `system` | `build_system`, `read_system` |
+| `merge` | `place`, `orbit_two_body`, `resolve_gas_overlap`, `stitch`, `finalise`, `merge_from_config` |
+| `io`, `params`, `presets` | HDF5 writer, namelist reader, ready-made parameter sets |
+
+## Tests
+
+```bash
+.venv/bin/python -m pytest -q              # everything, ~20 s
+.venv/bin/python -m pytest -q -m smoke     # end-to-end runs of every command and example, ~13 s
+```
+The physics tests check against analytic results: the exponential-disc potential against the Freeman closed form, the vertical solver
+against the isothermal sech² sheet, hydrostatic balance of every halo variant, conservation in the background grid, the Kepler orbit's
+energy and angular momentum, and the N-body distribution function against a fresh run of the Fortran `mk_nbody_comps` (agreement < 1 %).
+The smoke tests run each command and example on tiny inputs and check the files they write (consistent header, finite values,
+unique IDs, particles inside the box). There is no Fortran oracle for the disc: the Fortran `mk_gas_disc` crashes with an
+out-of-bounds read in `fintrp` (`legacy/mk_gas_disc.f90`, `xp(0)`).
+
+## Differences from the Fortran
+
+| area | Fortran | here |
+|---|---|---|
+| π | 3.14159 | exact |
+| compile-time choices (`-DNFW_HALO`, …) | makefile flags | runtime (`&MODEL`) |
+| gas halo potential | `a = r200/c200`, mass `M200` | same dark halo as the disc (`--legacy` restores) |
+| N-body potential interpolation | extrapolates from the wrong table segment | interpolates correctly |
+| N-body velocity scale | `√(G·mass_comp(1)/r_scale)` | `√(G·mtot/r_scale)` (identical for NFW/Burkert) |
+| N-body `drptab` edge fill | mixes in `dptab` differences | same by default; `--fix-legacy` corrects |
+| disc vertical positions | snapped to the 500-point z table | interpolated (`snap_z` restores) |
+| disc rotation curve | last radius reads past the array (`i.lt.nr` bug) | fixed |
+| bulge scale in rotation curve | `fbulge·rs`, inconsistent with its potential | same scale as the potential |
+| halo recentring | shifts by the inner half's mean | not applied |
+| output | Gadget binary or HDF5 | HDF5 only |
+
+## Limitations
+
+* No disc in the N-body potential (see above); systems are superposed, not re-equilibrated, apart from the gas pressure-balance rules.
+* Glass-file sampling (`ispoisson=.false.`) and Gadget binary output are not ported; `form_comp='general'` is not supported.
+* `read_tabulated` for a tabulated halo profile is a verbatim port that could not be tested (no data file).
+* The AREPO output has not been run in AREPO.
+* A 10⁴ K exponential disc inside a hot halo is always pressure-confined at a few scale lengths; see the table above.
+
+## References
+
+Komatsu & Seljak 2001, MNRAS 327, 1353 (gas halo) · Donnert 2013, arXiv:1311.7066 (finite-boundary gas, interface handling) ·
+Hernquist 1990 · Springel, Di Matteo & Hernquist 2005 · Yurin & Springel 2014, MNRAS 444, 62 (GalIC) · Freeman 1970 (exponential
+disc) · Weinberger, Springel & Pakmor 2020 (AREPO).
