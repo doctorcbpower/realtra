@@ -10,6 +10,11 @@ This repository contains a set of four codes that have been developed by [A/Prof
 
 * [`merge_comps.exe`](merge_comps.f90) - this code is used to merge gas components with N-body components.
 
+> **Layout.** The original Fortran codes (sources and `makefile`) now live in [`legacy/`](legacy/); build and run
+> them from there, e.g. `cd legacy && make`, then `./mk_gas_disc.exe ../parameters.txt`. The Python package
+> [`galaxy_components/`](galaxy_components/) is the maintained implementation (see "Python port" below).
+> `parameters.txt` stays at the top level because both read it.
+
 ## Usage
 
 ### Compilation
