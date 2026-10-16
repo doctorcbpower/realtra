@@ -1,5 +1,10 @@
 """Equilibrium N-body components via Eddington inversion (port of mk_nbody_comps.f90).
 
+This is the default N-body path.  It is spherical and isotropic and sees only
+the N-body components themselves (halo, bulge, ...): a stellar or gas disc is
+NOT sampled and its gravity is NOT in the potential, so the result is exact in
+isolation and only perturbatively consistent once a disc is added.
+
 Spherical, isotropic, multi-component.  The tabulated relative potential
 Psi(r) = (rscale/mtot) int_r^rmax M(r')/r'^2 dr' is built from the summed
 mass profile; each component's f(E) is then obtained from
@@ -183,6 +188,9 @@ def build_nbody(p: Params, verbose=True, legacy=True) -> NBodyModel:
     if p.fdecay <= 0:
         raise NotImplementedError("fdecay=0 (log-derivative branch) is dead code with Fortran defaults")
     ncomp = p.ncomp
+    if p.mdisc != 0 or p.mstar != 0:
+        log("Note: disc mass in &DISC is not included in the spherical N-body potential; "
+            "the disc is gas-only and acts only as a perturbation on these components.")
     m200 = virial_mass(p.v200) if p.v200 > 0 else p.m200
     r200 = virial_radius(m200)
     rs = r200 / p.c200

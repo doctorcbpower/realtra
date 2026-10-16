@@ -143,3 +143,33 @@ for the hot halo, it's assumed to be ionized.
 At the moment, I assume the N-body component is set up with GalIC - so potentials and 
 parameters are calculated to be consistent with this.
 
+
+## Python port (`galaxy_components/`)
+
+`mk_gas_disc` and `mk_nbody_comps` have a Python port that reads the same `parameters.txt`
+(requires numpy, scipy, h5py, f90nml; tests with `pytest`):
+```
+> python -m galaxy_components disc   parameters.txt --outdir out
+> python -m galaxy_components nbody  parameters.txt --outdir out
+```
+The makefile `-D` flags become an optional `&MODEL` namelist group (ignored by the Fortran
+programs): `halo_type='hernquist'|'nfw'|'logarithmic'`, `galic=.true.`. Output is GADGET HDF5 only;
+glass-file sampling (`ispoisson=.false.`) is not ported yet.
+
+### What the N-body path does and does not model
+
+The N-body sampler (`nbody`) is the default and only N-body path. It builds **spherical, isotropic
+halo and bulge components** by Eddington inversion, each in the potential of the *N-body
+components alone* (`&NBODY`: `ncomp`, `form_comp`, `fmass_comp`, ...). A bulge is simply another
+component, e.g. `form_comp(2)='hernquist'`.
+
+* **The stellar disc is not sampled.** `nbody` produces no disc particles, and the disc's gravity is
+  **not** included in the halo/bulge potential, so these components are in equilibrium only in
+  isolation. Adding a disc perturbs them; expect adiabatic response/relaxation when evolved.
+  Use it where that is acceptable (e.g. a small disc-to-halo mass ratio), or provide the stellar
+  disc and a consistent halo from a made-to-measure code such as GalIC.
+* **The gas disc is a test-particle-like add-on.** `disc` solves hydrostatic equilibrium for the gas
+  in the analytic halo + bulge + stellar-disc potential (the gas's own gravity enters only through
+  the local vertical term, and its radial pull through the Freeman formula). It does not feed back
+  on the halo, and the halo is not re-equilibrated to the disc.
+* True disc + halo equilibrium (made-to-measure or Schwarzschild-type) is out of scope here.
