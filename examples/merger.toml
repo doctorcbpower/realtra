@@ -10,7 +10,7 @@ nngb = 64
 
 [orbit]                       # sets position/velocity of systems 0 and 1 (COM frame, x-y plane)
 systems = [0, 1]
-r_init = 400.0                # kpc
+r_init = 700.0                # kpc (> sum of the two gas extents, ~240 + 160)
 r_peri = 30.0
 ecc = 1.0
 
