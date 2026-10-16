@@ -1,4 +1,4 @@
-# build_galaxy_components
+# realtra
 
 Equilibrium initial conditions for galaxy simulations: a **gas disc**, a hot **gas halo** and spherical
 **N-body halo/bulge** components, built consistently in one dark-matter potential, stitched together
