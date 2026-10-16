@@ -144,3 +144,27 @@ def test_disc_truncation_follows_halo_pressure():
     hot = gas_halo.build_gas_halo(p, verbose=False)
     t2, mfrac2, _ = compound.truncate_disc(disc, hot)
     assert t2.mrtab[-1] < 0.5 * disc.mrtab[-1]            # real halo crushes the outer disc
+
+
+def test_entropy_core_halo():
+    p = read_params(DATA / "galaxy_params.txt")
+    p.ndisc = 100
+    ks = gas_halo.build_gas_halo(p, verbose=False)
+    r = ks.r200 * np.array([0.003, 0.03, 0.3, 1.0])
+    near = gas_halo.add_entropy_core(p, ks, 1e-6, verbose=False)
+    assert np.allclose(near.rho(r), ks.rho(r), rtol=2e-3)         # f -> 0 recovers K&S
+    h = gas_halo.add_entropy_core(p, ks, 0.3, verbose=False)
+    assert abs(np.interp(ks.r200, h.rtab, h.mtab) - 1) < 1e-3     # gas mass inside r200 unchanged
+    assert h.rho(0.01) < 0.05 * ks.rho(0.01)                       # a real core
+    # still hydrostatic in the same dark-matter potential
+    rr = ks.r200 * np.array([0.02, 0.1, 0.5])
+    eps = 1e-4
+    dP = (h.pressure(rr * (1 + eps)) - h.pressure(rr * (1 - eps))) / (2 * eps * rr)
+    fc = gas_halo._fnorm(ks.kind, ks.conc)
+    m_enc = ks.m_ref * gas_halo._fnorm(ks.kind, rr / ks.a) / fc
+    # profile is tabulated (log-linear interpolation), so slopes are good to ~1%
+    assert np.allclose(dP / h.rho(rr), -GGDT * m_enc / rr ** 2, rtol=1.5e-2)
+    # a gentler halo crushes the disc less
+    disc = gas_disc.build_gas_disc(p, build_model(p, verbose=False), verbose=False)
+    kept = [compound.truncate_disc(disc, hh)[0].mrtab[-1] for hh in (ks, h)]
+    assert kept[1] > 1.5 * kept[0]

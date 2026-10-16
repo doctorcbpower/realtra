@@ -69,6 +69,7 @@ class HaloGas:
     utab: np.ndarray         # specific internal energy [(km/s)^2]
     rho: Callable            # rho_gas(r)
     u: Callable              # u_gas(r)
+    m_ref: float = 0.0       # dark-halo mass inside r200 used in the potential
 
     def pressure(self, r):
         return (GAMMA - 1) * self.rho(r) * self.u(r)
@@ -125,7 +126,66 @@ def build_gas_halo(p: Params, ntab=1000, consistent=True, verbose=True) -> HaloG
 
     rho_fn = lambda r: rho0 * rhog(np.asarray(r) / a)
     u_fn = lambda r: temp0 * rhog(np.asarray(r) / a) ** (gam - 1) / U_TO_TEMP / MU_HALO
-    return HaloGas(kind, a, m200, r200, conc, gam, a0, temp0, rho0, mgas, rtab, mtab, utab, rho_fn, u_fn)
+    return HaloGas(kind, a, m200, r200, conc, gam, a0, temp0, rho0, mgas, rtab, mtab, utab, rho_fn, u_fn, m_ref)
+
+
+def add_entropy_core(p: Params, ks: HaloGas, f_core: float, verbose=True) -> HaloGas:
+    """Raise the central entropy of a K&S halo, keeping the dark potential and gas mass.
+
+    Entropy is K = P / rho^(5/3).  The K&S halo has K_ks(r) rising outward; here
+    K(r) = K_ks(r) + f_core * K_ks(r200), a constant "floor" that flattens the
+    central density into a core and lowers the central pressure.  Hydrostatic
+    equilibrium dP/dr = -rho G M_dm/r^2 with P = K rho^(5/3) integrates in closed
+    form,
+
+        P(r)^(2/5) = P_out^(2/5) + (2/5) int_r^{r_out} K^(-3/5) G M_dm / r'^2 dr',
+
+    and the outer pressure P_out is fixed by requiring the gas mass inside r200
+    to stay fbaryon*M200.  f_core = 0 returns the K&S solution exactly.
+    """
+    if f_core < 0:
+        raise ValueError("f_core must be >= 0")
+    if f_core == 0:
+        return ks
+    log = print if verbose else (lambda *a, **k: None)
+    r = ks.rtab
+    x = r / ks.a
+    fc = float(_fnorm(ks.kind, ks.conc))
+    g = GGDT * ks.m_ref * _fnorm(ks.kind, x) / fc / r ** 2
+    rho_ks = ks.rho(r)
+    p_ks = (GAMMA - 1) * rho_ks * ks.u(r)
+    k_ks = p_ks / rho_ks ** (5.0 / 3.0)
+    k200 = float(np.interp(np.log(ks.r200), np.log(r), k_ks))
+    k = k_ks + f_core * k200
+    lr = np.log(r)
+    integrand = k ** (-0.6) * g * r                       # dr = r dln r
+    cum_in = integrate.cumulative_simpson(integrand, x=lr, initial=0.0)
+    tail = cum_in[-1] - cum_in                            # int_r^{r_out}
+
+    def profile(p_out):
+        pp = (p_out ** 0.4 + 0.4 * tail) ** 2.5
+        return pp, (pp / k) ** 0.6
+
+    def mass_in(p_out):
+        _, rho = profile(p_out)
+        cum = integrate.cumulative_simpson(4 * PI * r ** 3 * rho, x=lr, initial=0.0)
+        return float(np.interp(np.log(ks.r200), lr, cum)), cum
+
+    from scipy import optimize
+    target = ks.mgas
+    lo, hi = np.log(p_ks[-1]) - 15, np.log(p_ks[-1]) + 15
+    sol = optimize.brentq(lambda lp: np.log(mass_in(np.exp(lp))[0] / target), lo, hi, xtol=1e-12)
+    pp, rho = profile(np.exp(sol))
+    _, cum = mass_in(np.exp(sol))
+    u = pp / ((GAMMA - 1) * rho)
+    lrr = np.log(r)
+    rho_fn = lambda rr: np.exp(np.interp(np.log(np.asarray(rr, dtype=float)), lrr, np.log(rho)))
+    u_fn = lambda rr: np.exp(np.interp(np.log(np.asarray(rr, dtype=float)), lrr, np.log(u)))
+    temp0 = float(u[0] * U_TO_TEMP * MU_HALO)
+    log(f"Entropy core f_core={f_core:g}: central density {rho[0] / ks.rho(r[0]):.3g} x K&S at r={r[0]:.2g}; "
+        f"P(1 kpc) / K&S = {np.interp(np.log(1.0), lr, pp) / np.interp(np.log(1.0), lr, p_ks):.3g}")
+    return HaloGas(ks.kind, ks.a, ks.m200, ks.r200, ks.conc, float("nan"), float("nan"), temp0,
+                   float(rho[0]), ks.mgas, r, cum / target, u, rho_fn, u_fn, ks.m_ref)
 
 
 def p_form(p: Params):

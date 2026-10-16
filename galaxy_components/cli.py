@@ -66,9 +66,14 @@ def run_nbody(args):
     write_hdf5(out / output_name(p.nbody_file, p.snap_format), species)
 
 
+def _core(p, args):
+    return args.halo_core if args.halo_core is not None else p.halo_core
+
+
 def run_halo(args):
     p = read_params(args.params)
     halo = gas_halo.build_gas_halo(p, consistent=not args.legacy)
+    halo = gas_halo.add_entropy_core(p, halo, _core(p, args))
     rng = np.random.default_rng(args.seed)
     pos, vel, ug, mpart = gas_halo.sample_gas_halo(p, halo, rng, velocity_noise=not args.cold)
     out = Path(args.outdir)
@@ -89,6 +94,7 @@ def run_galaxy(args):
     model = build_model(p)
     disc = gas_disc.build_gas_disc(p, model, verbose=False)
     halo = gas_halo.build_gas_halo(p, consistent=not args.legacy_halo)
+    halo = gas_halo.add_entropy_core(p, halo, _core(p, args))
     hpos, hvel, hug, hmp = gas_halo.sample_gas_halo(p, halo, rng, velocity_noise=not args.cold_halo)
 
     if args.naive_merge:
@@ -138,6 +144,9 @@ def main(argv=None):
         if name == "nbody":
             sp.add_argument("--fix-legacy", action="store_true",
                             help="correct Fortran edge-extrapolation quirk instead of reproducing it")
+        if name in ("halo", "galaxy"):
+            sp.add_argument("--halo-core", type=float, default=None,
+                            help="gas entropy floor / K&S entropy at r200 (overrides &MODEL halo_core)")
         if name == "halo":
             sp.add_argument("--legacy", action="store_true",
                             help="Fortran halo potential (a=r200/c200, M200) instead of the disc's dark halo")

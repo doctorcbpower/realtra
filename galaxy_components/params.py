@@ -68,6 +68,7 @@ class Params:
     halo_type: str = "hernquist"  # 'hernquist' | 'nfw' | 'logarithmic'
     galic: bool = True  # GalIC conventions (total halo mass == mhalo)
     exponential_disc: bool = True
+    halo_core: float = 0.0  # gas entropy floor, in units of the K&S entropy at r200 (0 = pure K&S)
     # Gas-disc mesh (hardcoded in mk_gas_disc.f90)
     nrbin: int = 150
     nzbin: int = 500

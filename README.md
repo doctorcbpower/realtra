@@ -213,3 +213,27 @@ distance to the `--nngb`-th neighbour, since AREPO does not read one from the IC
 the box centre, and `BoxSize` is written to the header. Cells are written as double precision with a
 `Masses` block. The AREPO values `BoxSize` and `ReferenceGasPartMass` are printed; AREPO's `MeanVolume`
 comes from its internal `GridSize`, which is not reproduced here.
+
+#### A halo that doesn't crush the disc: `--halo-core`
+
+The K&S halo is cuspy, so its central pressure is high. `--halo-core f` (or `halo_core=f` in a
+`&MODEL` group) keeps the same dark potential and the same gas mass inside r200 but adds a constant
+entropy floor, K(r) = K_KS(r) + f K_KS(r200) with K = P/rho^(5/3), and re-solves hydrostatic
+equilibrium (`gas_halo.add_entropy_core`; f = 0 is exactly K&S). Effect on the default parameters
+(disc of 0.40 x 10^10 Msol, R_d = 2.1 kpc, T_disc = 10^4 K):
+
+| f    | disc mass kept | disc outer radius | halo T(1 kpc) | halo n(1 kpc) |
+|------|----------------|-------------------|---------------|---------------|
+| 0    | 19 %           | 2.6 kpc           | 1.5e6 K       | 0.91 cm^-3    |
+| 0.03 | 46 %           | 4.5 kpc           | 2.6e6 K       | 0.10 cm^-3    |
+| 0.1  | 61 %           | 5.7 kpc           | 3.3e6 K       | 0.028 cm^-3   |
+| 0.3  | 72 %           | 6.6 kpc           | 4.2e6 K       | 0.008 cm^-3   |
+| 1    | 79 %           | 7.1 kpc           | 6.2e6 K       | 0.002 cm^-3   |
+
+The core helps a lot but saturates: beyond ~3 R_d the *disc's own* midplane pressure (an exponential,
+10^4 K gas) falls to ~10^3 K cm^-3, below that of any plausible hot halo at those radii, so some
+truncation of the outer disc is unavoidable for this disc/halo pairing. Other ways to keep more disc: a
+lower `fbaryon`, a hotter or more extended disc (`temp`, `fdisc`), or accepting an outer disc that is
+pressure-confined. Note that a core pushes gas outwards: for fixed M_gas(<r200) there is more mass
+between r200 and `rtrunc`*r200 (at f = 0.1 the sampled halo is ~1.6 x heavier), so reduce `rtrunc` if
+that matters.
